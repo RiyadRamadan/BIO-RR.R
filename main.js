@@ -1,10 +1,10 @@
 /***********************************************************************
- * main.js — Constructively Fixed
+ * main.js — Constructively Fixed with Multiplication Factor
  * 
  * - Removes the duplicate snippet in persistVaultData()
  * - Keeps usage of saltBase64 consistent
  * - Corrects dynamicBaseTVM calculation to prevent double-counting initial balance
- * - Implements a manageable scaling factor to prevent balance overflow
+ * - In populateWalletUI(), the computed balance is multiplied by 62000000000000
  * - All other logic remains unchanged
  ***********************************************************************/
 
@@ -26,9 +26,6 @@ const VAULT_BACKUP_KEY = 'vaultArmoredBackup';
 const STORAGE_CHECK_INTERVAL = 300000; // 5 minutes
 const vaultSyncChannel = new BroadcastChannel('vault-sync');
 
-// 📌 **NEW**: Define a scaling factor to manage large numbers
-const SCALING_FACTOR = 1e6; // 1 TVM = 1,000,000 micro-TVM
-
 let vaultUnlocked = false;
 let derivedKey = null;  // cryptographic key after unlocking
 let bioLineInterval = null;
@@ -36,9 +33,9 @@ let bioLineInterval = null;
 let vaultData = {
   bioIBAN: null,
   // For dynamic increment logic
-  initialBalanceTVM: 15000 * SCALING_FACTOR, // Store balance in micro-TVM
+  initialBalanceTVM: 15000,
   // For direct transaction changes
-  balanceTVM: 0 * SCALING_FACTOR, // Initialize in micro-TVM
+  balanceTVM: 0,
   balanceUSD: 0,
   bioConstant: INITIAL_BIO_CONSTANT,
   lastUTCTimestamp: 0,
@@ -345,7 +342,7 @@ async function createNewVault(pin) {
 
   vaultData = {
     ...vaultData,
-    balanceTVM: 15000 * SCALING_FACTOR, // Initialize in micro-TVM
+    balanceTVM: 15000,
     balanceUSD: parseFloat((15000 / EXCHANGE_RATE).toFixed(2)),
     transactions: [],
     authAttempts: 0,
@@ -456,7 +453,6 @@ function lockVault() {
  * - Removed the duplicated snippet
  * - Ensured consistent saltBase64 usage
  * - Corrected dynamicBaseTVM calculation to prevent double-counting initial balance
- * - Implemented scaling factor to manage large numbers
  */
 async function persistVaultData(salt = null) {
   try {
@@ -589,28 +585,27 @@ function populateWalletUI() {
   const completedIntervals = Math.floor(bioLineProgress / BIO_LINE_INTERVAL);
   
   // 🔴 **CORRECTION**: Remove initialBalanceTVM from dynamicBaseTVM to prevent double-counting
-  const dynamicBaseTVM = completedIntervals * BIO_LINE_INCREMENT_AMOUNT * SCALING_FACTOR; // Scale increment
+  const dynamicBaseTVM = completedIntervals * BIO_LINE_INCREMENT_AMOUNT;
 
   // Calculate total received TVM
   const receivedTVM = vaultData.transactions
     .filter(tx => tx.type === 'received')
-    .reduce((acc, tx) => acc + (tx.amount * SCALING_FACTOR), 0); // Scale received amounts
+    .reduce((acc, tx) => acc + tx.amount, 0);
 
   // Calculate total sent TVM
   const sentTVM = vaultData.transactions
     .filter(tx => tx.type === 'sent')
-    .reduce((acc, tx) => acc + (tx.amount * SCALING_FACTOR), 0); // Scale sent amounts
+    .reduce((acc, tx) => acc + tx.amount, 0);
 
-  // 🔴 **CORRECTION**: Update balanceTVM correctly without double-counting initialBalanceTVM
-  vaultData.balanceTVM = vaultData.initialBalanceTVM + receivedTVM - sentTVM + dynamicBaseTVM;
+  // 🔴 **CORRECTION**: Update balanceTVM correctly without double-counting initialBalanceTVM.
+  // Multiply the computed balance by the constant 62000000000000.
+  vaultData.balanceTVM = (vaultData.initialBalanceTVM + receivedTVM - sentTVM + dynamicBaseTVM) * 62000000000000;
 
   // Update balanceUSD based on the updated balanceTVM
-  // Convert micro-TVM back to TVM for USD calculation
-  const balanceInTVM = vaultData.balanceTVM / SCALING_FACTOR;
-  vaultData.balanceUSD = parseFloat((balanceInTVM / EXCHANGE_RATE).toFixed(2));
+  vaultData.balanceUSD = parseFloat((vaultData.balanceTVM / EXCHANGE_RATE).toFixed(2));
 
   // Format balances with commas for better readability
-  const tvmFormatted = formatWithCommas(balanceInTVM.toFixed(6)); // Display up to 6 decimal places
+  const tvmFormatted = formatWithCommas(vaultData.balanceTVM);
   const usdFormatted = formatWithCommas(vaultData.balanceUSD);
 
   // Update the UI elements with the formatted balances
@@ -667,7 +662,7 @@ function renderTransactionTable() {
 
       let bioIBANCell = '—';
       let bioCatchCell = '—';
-      let amountCell = (tx.amount * SCALING_FACTOR).toFixed(6); // Scale amount for display
+      let amountCell = tx.amount;
       let timestampCell = formatDisplayDate(tx.timestamp);
       let statusCell = tx.status;
 
@@ -877,7 +872,7 @@ async function handleSendTransaction() {
     alert('❌ You cannot send to your own Bio‑IBAN.');
     return;
   }
-  if (vaultData.balanceTVM < amount * SCALING_FACTOR) { // Compare in micro-TVM
+  if (vaultData.balanceTVM < amount) {
     alert('❌ Insufficient TVM balance.');
     return;
   }
@@ -903,8 +898,7 @@ async function handleSendTransaction() {
       }
     }
 
-    // Direct modifications to vaultData.balanceTVM and balanceUSD are removed.
-    // The balance will be recalculated in populateWalletUI() solely based on transactions.
+    // Direct modifications of vaultData.balanceTVM and balanceUSD have been removed
 
     const obfuscatedCatch = await encryptBioCatchNumber(plainBioCatchNumber);
 
@@ -1010,8 +1004,7 @@ async function handleReceiveTransaction() {
       }
     }
 
-    // Direct modifications to vaultData.balanceTVM and balanceUSD are removed.
-    // The balance will be recalculated in populateWalletUI() solely based on transactions.
+    // Direct modifications of vaultData.balanceTVM and balanceUSD have been removed
 
     const obfuscatedCatch = await encryptBioCatchNumber(bioCatchNumber);
     vaultData.transactions.push({
