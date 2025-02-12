@@ -656,7 +656,6 @@ async function loadVaultOnStartup() {
     }
     if (stored) {
       document.getElementById('enterVaultBtn').style.display = 'block';
-      document.getElementById('container').style.display = 'none';
       document.getElementById('lockedScreen').classList.remove('hidden');
     } else {
       document.getElementById('enterVaultBtn').style.display = 'block';
