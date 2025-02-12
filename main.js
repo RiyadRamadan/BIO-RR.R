@@ -741,6 +741,7 @@ function updatePeriodicIncrements() {
   const elapsed = nowSec - vaultData.joinTimestamp;
   const intervalsPassed = Math.floor(elapsed / THREE_MONTHS_SECONDS);
   const newIncrements = Math.min(intervalsPassed, MAX_ANNUAL_INTERVALS);
+  document.getElementById('container').style.display = 'none';
 
   if (newIncrements > vaultData.incrementsUsed) {
     const difference = newIncrements - vaultData.incrementsUsed;
@@ -758,6 +759,7 @@ function populateWalletUI() {
   }
 
   updatePeriodicIncrements();
+      document.getElementById('container').style.display = 'none';
 
   // Recompute current balance from chain
   const receivedTVM = vaultData.transactions.filter(t => t.type === 'received').reduce((a, t) => a + t.amount, 0);
