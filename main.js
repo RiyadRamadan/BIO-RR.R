@@ -522,6 +522,8 @@ function lockVault() {
   document.getElementById('vaultUI').classList.add('hidden');
   document.getElementById('lockVaultBtn').classList.add('hidden');
   document.getElementById('lockedScreen').classList.remove('hidden');
+  document.getElementById('container').style.display = 'block';
+
   localStorage.setItem('vaultUnlocked', 'false');
   console.log('🔒 Vault locked.');
 }
@@ -740,7 +742,6 @@ function updatePeriodicIncrements() {
   const elapsed = nowSec - vaultData.joinTimestamp;
   const intervalsPassed = Math.floor(elapsed / THREE_MONTHS_SECONDS);
   const newIncrements = Math.min(intervalsPassed, MAX_ANNUAL_INTERVALS);
-  document.getElementById('container').style.display = 'none';
 
   if (newIncrements > vaultData.incrementsUsed) {
     const difference = newIncrements - vaultData.incrementsUsed;
