@@ -12,6 +12,9 @@
  *  - UI integration (copy IBAN, export CSV, modals, etc.)
  ***********************************************************************/
 
+/******************************
+ * Constants & Global Variables
+ ******************************/
 const DB_NAME = 'BioVaultDB';
 const DB_VERSION = 1;
 const VAULT_STORE = 'vault';
@@ -29,12 +32,14 @@ const BIO_LINE_INCREMENT_AMOUNT = 15000; // 15,000 TVM each interval
 
 const VAULT_BACKUP_KEY = 'vaultArmoredBackup';
 const STORAGE_CHECK_INTERVAL = 300000;   // 5 minutes
-const vaultSyncChannel = new BroadcastChannel('vault-sync');
 
 // Daily-limit logic:
 const MAX_BONUS_PER_DAY = 3;   
 const LARGE_TX_BONUS = 400;    
 const LARGE_TX_THRESHOLD = 1200; // If TX > 1200 => possible bonus
+
+// Cross-tab sync channel using BroadcastChannel
+const vaultSyncChannel = new BroadcastChannel('vault-sync');
 
 let vaultUnlocked = false;
 let derivedKey = null; // cryptographic key after unlocking
@@ -44,8 +49,7 @@ let bioLineInterval = null;
  * vaultData:
  *   - dailyCashback: tracking usage for canReceiveCashback()
  *   - finalChainHash, lastTransactionHash
- *   - transactions array
- *   - etc.
+ *   - transactions array, etc.
  */
 let vaultData = {
   bioIBAN: null,
@@ -66,9 +70,9 @@ let vaultData = {
   dailyCashback: { date: '', usedCount: 0 }
 };
 
-/********************************************************
+/******************************
  * Utility / Helper Functions
- ********************************************************/
+ ******************************/
 function formatWithCommas(num) {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
@@ -76,12 +80,12 @@ function formatWithCommas(num) {
 function formatDisplayDate(timestampInSeconds) {
   const date = new Date(timestampInSeconds * 1000);
   const isoString = date.toISOString();
-  const datePart = isoString.slice(0, 10);
-  const timePart = isoString.slice(11, 19);
-  return `${datePart} ${timePart}`;
+  return `${isoString.slice(0, 10)} ${isoString.slice(11, 19)}`;
 }
 
-// "Add to Home Screen" prompt
+/******************************
+ * "Add to Home Screen" Prompt
+ ******************************/
 let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
@@ -101,9 +105,9 @@ function promptInstallA2HS() {
   });
 }
 
-/********************************************************
+/******************************
  * Transaction Hashing Utilities
- ********************************************************/
+ ******************************/
 function bufferToHex(buffer) {
   return Array.from(new Uint8Array(buffer))
     .map(b => b.toString(16).padStart(2, '0'))
@@ -134,25 +138,20 @@ async function computeFullChainHash(transactions) {
   return runningHash;
 }
 
-/********************************************************
- * Cross-Device Chain + Bio-Constant Validation
- ********************************************************/
+/******************************
+ * Cross-Device Chain & Bio-Constant Validation
+ ******************************/
 async function verifyFullChainAndBioConstant(senderVaultSnapshot) {
   try {
-    const {
-      joinTimestamp,
-      initialBioConstant,
-      transactions,
-      finalChainHash
-    } = senderVaultSnapshot;
+    const { joinTimestamp, initialBioConstant, transactions, finalChainHash } = senderVaultSnapshot;
 
-    // 1) chain hash
+    // 1) Recompute chain hash
     const recomputedHash = await computeFullChainHash(transactions);
     if (recomputedHash !== finalChainHash) {
       return { success: false, reason: 'Chain Hash mismatch' };
     }
 
-    // 2) re-simulate the bioConstant
+    // 2) Re-simulate the bioConstant
     let simulatedBio = initialBioConstant;
     let prevTs = joinTimestamp;
     const sortedTx = [...transactions].sort((a, b) => a.timestamp - b.timestamp);
@@ -175,9 +174,9 @@ async function verifyFullChainAndBioConstant(senderVaultSnapshot) {
   }
 }
 
-/********************************************************
- * WebCrypto / PBKDF2 / AES-GCM
- ********************************************************/
+/******************************
+ * WebCrypto / PBKDF2 / AES-GCM Functions
+ ******************************/
 function generateSalt() {
   return crypto.getRandomValues(new Uint8Array(16));
 }
@@ -224,9 +223,9 @@ async function deriveKeyFromPIN(pin, salt) {
   );
 }
 
-/********************************************************
- * WebAuthn / Biometric
- ********************************************************/
+/******************************
+ * WebAuthn / Biometric Functions
+ ******************************/
 async function performBiometricAuthenticationForCreation() {
   try {
     const publicKey = {
@@ -262,12 +261,7 @@ async function performBiometricAssertion(credentialId) {
   try {
     const publicKey = {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
-      allowCredentials: [
-        {
-          id: base64ToBuffer(credentialId),
-          type: 'public-key'
-        }
-      ],
+      allowCredentials: [{ id: base64ToBuffer(credentialId), type: 'public-key' }],
       userVerification: "required",
       timeout: 60000
     };
@@ -279,9 +273,9 @@ async function performBiometricAssertion(credentialId) {
   }
 }
 
-/********************************************************
+/******************************
  * Encryption / Decryption Helpers
- ********************************************************/
+ ******************************/
 async function encryptData(key, dataObj) {
   const enc = new TextEncoder();
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -314,9 +308,74 @@ async function decryptBioCatchNumber(encryptedString) {
   }
 }
 
-/********************************************************
- * IndexedDB CRUD
- ********************************************************/
+/******************************
+ * Cross-Tab Synchronization & Storage Persistence
+ ******************************/
+// Enforce single vault using a localStorage flag
+function enforceSingleVault() {
+  const vaultLock = localStorage.getItem('vaultLock');
+  if (!vaultLock) {
+    localStorage.setItem('vaultLock', 'locked');
+  } else {
+    console.log('🔒 Single vault enforced: found vaultLock in localStorage.');
+  }
+}
+
+// Persist storage if possible
+async function enforceStoragePersistence() {
+  if (!navigator.storage?.persist) return;
+  const already = await navigator.storage.persisted();
+  if (!already) {
+    const granted = await navigator.storage.persist();
+    console.log(granted ? '🔒 Storage persisted' : '⚠️ Storage not persisted');
+  }
+  setInterval(async () => {
+    const estimate = await navigator.storage.estimate();
+    if ((estimate.usage / estimate.quota) > 0.85) {
+      console.warn('🚨 Storage nearly full:', estimate);
+      alert('❗ Vault storage nearing limit! Export backup!');
+    }
+  }, STORAGE_CHECK_INTERVAL);
+}
+
+// Restore the derived key from sessionStorage on page load
+async function restoreDerivedKey() {
+  const storedKey = sessionStorage.getItem("vaultDerivedKey");
+  if (storedKey) {
+    derivedKey = base64ToBuffer(storedKey);
+    console.log("🔑 Restored encryption key after refresh.");
+  }
+}
+
+// Save derived key to sessionStorage before unload
+window.addEventListener("beforeunload", () => {
+  if (derivedKey) {
+    sessionStorage.setItem("vaultDerivedKey", bufferToBase64(derivedKey));
+  }
+});
+
+// BroadcastChannel listener to sync vault updates
+vaultSyncChannel.onmessage = async (e) => {
+  if (e.data?.type === 'vaultUpdate') {
+    try {
+      const { iv, data } = e.data.payload;
+      if (!derivedKey) {
+        console.warn('🔒 Received vaultUpdate but derivedKey is not available yet.');
+        return;
+      }
+      const decrypted = await decryptData(derivedKey, base64ToBuffer(iv), base64ToBuffer(data));
+      Object.assign(vaultData, decrypted);
+      populateWalletUI();
+      console.log('🔄 Synced vault across tabs');
+    } catch (err) {
+      console.error('Tab sync failed:', err);
+    }
+  }
+};
+
+/******************************
+ * IndexedDB CRUD Functions
+ ******************************/
 function openVaultDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -337,7 +396,6 @@ async function saveVaultDataToDB(iv, ciphertext, saltBase64) {
     const tx = db.transaction([VAULT_STORE], 'readwrite');
     const store = tx.objectStore(VAULT_STORE);
     const ciphertextUint8 = new Uint8Array(ciphertext);
-
     store.put({
       id: 'vaultData',
       iv: bufferToBase64(iv),
@@ -382,9 +440,9 @@ async function loadVaultDataFromDB() {
   });
 }
 
-/********************************************************
- * Vault Creation / Unlock
- ********************************************************/
+/******************************
+ * Vault Creation / Unlock Functions
+ ******************************/
 async function createNewVault(pin) {
   const stored = await loadVaultDataFromDB();
   if (stored) {
@@ -403,7 +461,6 @@ async function createNewVault(pin) {
   vaultData.lastUTCTimestamp = nowSec;
   vaultData.initialBioConstant = vaultData.bioConstant;
   vaultData.joinTimestamp = nowSec;
-
   vaultData.bioIBAN = `BIO${vaultData.bioConstant + nowSec}`;
   vaultData.balanceTVM = 3000;
   vaultData.balanceUSD = parseFloat((vaultData.balanceTVM / EXCHANGE_RATE).toFixed(2));
@@ -475,7 +532,6 @@ async function unlockVault() {
     derivedKey = await deriveKeyFromPIN(pin, stored.salt);
     const decrypted = await decryptData(derivedKey, stored.iv, stored.ciphertext);
     vaultData = decrypted;
-
     vaultData.lockoutTimestamp = stored.lockoutTimestamp;
     vaultData.authAttempts = stored.authAttempts;
 
@@ -522,15 +578,13 @@ function lockVault() {
   document.getElementById('vaultUI').classList.add('hidden');
   document.getElementById('lockVaultBtn').classList.add('hidden');
   document.getElementById('lockedScreen').classList.remove('hidden');
-  document.getElementById('container').style.display = 'block';
-
   localStorage.setItem('vaultUnlocked', 'false');
   console.log('🔒 Vault locked.');
 }
 
-/********************************************************
- * Persistence
- ********************************************************/
+/******************************
+ * Persistence Functions
+ ******************************/
 async function persistVaultData(salt = null) {
   try {
     if (!derivedKey) {
@@ -578,9 +632,9 @@ async function promptAndSaveVault() {
   await persistVaultData();
 }
 
-/********************************************************
- * UI Show/Hide
- ********************************************************/
+/******************************
+ * UI Show/Hide Functions
+ ******************************/
 function showVaultUI() {
   document.getElementById('lockedScreen').classList.add('hidden');
   document.getElementById('vaultUI').classList.remove('hidden');
@@ -589,10 +643,11 @@ function showVaultUI() {
   renderTransactionTable();
 }
 
-/********************************************************
- * Startup / Multi-Tab
- ********************************************************/
+/******************************
+ * Startup / Multi-Tab Initialization
+ ******************************/
 window.addEventListener('DOMContentLoaded', () => {
+  // Restore last session URL if needed
   let lastURL = localStorage.getItem("last_session_url");
   if (lastURL && window.location.href !== lastURL) {
     window.location.href = lastURL;
@@ -602,72 +657,13 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   console.log("✅ Bio‑Vault: Initializing UI...");
+  enforceSingleVault();
+  restoreDerivedKey();
   initializeUI();
   loadVaultOnStartup();
   preventMultipleVaults();
   enforceStoragePersistence();
-
-
-  vaultSyncChannel.onmessage = async (e) => {
-    if (e.data?.type === 'vaultUpdate') {
-      try {
-        const { iv, data } = e.data.payload;
-        if (!derivedKey) {
-          console.warn('🔒 Received vaultUpdate but derivedKey is not available yet.');
-          return;
-        }
-        const decrypted = await decryptData(derivedKey, base64ToBuffer(iv), base64ToBuffer(data));
-        Object.assign(vaultData, decrypted);
-        populateWalletUI();
-        console.log('🔄 Synced vault across tabs');
-      } catch (err) {
-        console.error('Tab sync failed:', err);
-      }
-    }
-  };
 });
-
-async function enforceStoragePersistence() {
-  if (!navigator.storage?.persist) return;
-  const already = await navigator.storage.persisted();
-  if (!already) {
-    const granted = await navigator.storage.persist();
-    console.log(granted ? '🔒 Storage persisted' : '⚠️ Storage not persisted');
-  }
-  setInterval(async () => {
-    const estimate = await navigator.storage.estimate();
-    if ((estimate.usage / estimate.quota) > 0.85) {
-      console.warn('🚨 Storage nearly full:', estimate);
-      alert('❗ Vault storage nearing limit! Export backup!');
-    }
-  }, STORAGE_CHECK_INTERVAL);
-}
-
-async function loadVaultOnStartup() {
-  try {
-    let stored = await loadVaultDataFromDB();
-    if (!stored) {
-      const backup = localStorage.getItem(VAULT_BACKUP_KEY);
-      if (backup) {
-        const parsed = JSON.parse(backup);
-        parsed.iv = base64ToBuffer(parsed.iv);
-        parsed.ciphertext = base64ToBuffer(parsed.data);
-        console.log('♻️ Restored from localStorage backup');
-        stored = parsed;
-      }
-    }
-    if (stored) {
-      document.getElementById('enterVaultBtn').style.display = 'block';
-      document.getElementById('lockedScreen').classList.remove('hidden');
-    } else {
-      document.getElementById('enterVaultBtn').style.display = 'block';
-      document.getElementById('lockedScreen').classList.remove('hidden');
-    }
-  } catch (err) {
-    console.error('🔥 Backup restoration failed:', err);
-    localStorage.removeItem(VAULT_BACKUP_KEY);
-  }
-}
 
 function preventMultipleVaults() {
   window.addEventListener('storage', (evt) => {
@@ -689,18 +685,9 @@ function preventMultipleVaults() {
   });
 }
 
-function enforceSingleVault() {
-  const vaultLock = localStorage.getItem('vaultLock');
-  if (!vaultLock) {
-    localStorage.setItem('vaultLock', 'locked');
-  } else {
-    console.log('🔒 Single vault enforced: found vaultLock in localStorage.');
-  }
-}
-
-/********************************************************
- * Daily-limit logic for big TX
- ********************************************************/
+/******************************
+ * Daily-limit Logic
+ ******************************/
 function canReceiveCashback(nowSec) {
   if (!vaultData.dailyCashback) {
     vaultData.dailyCashback = { date: '', usedCount: 0 };
@@ -713,7 +700,6 @@ function canReceiveCashback(nowSec) {
   return vaultData.dailyCashback.usedCount < MAX_BONUS_PER_DAY;
 }
 
-// UPDATED: Compute bonus transaction’s hash immediately and update the chain pointer.
 async function giveCashbackBonus(nowSec) {
   vaultData.dailyCashback.usedCount++;
   const bonusTx = {
@@ -732,10 +718,9 @@ async function giveCashbackBonus(nowSec) {
   console.log(`💸 Gave user ${LARGE_TX_BONUS} TVM bonus. dailyUsed=${vaultData.dailyCashback.usedCount}`);
 }
 
-  
-/********************************************************
- * Periodic Increments + UI
- ********************************************************/
+/******************************
+ * Periodic Increments & UI
+ ******************************/
 function updatePeriodicIncrements() {
   if (!vaultData.joinTimestamp) return;
   const nowSec = Math.floor(Date.now() / 1000);
@@ -759,9 +744,7 @@ function populateWalletUI() {
   }
 
   updatePeriodicIncrements();
-      document.getElementById('container').style.display = 'none';
 
-  // Recompute current balance from chain
   const receivedTVM = vaultData.transactions.filter(t => t.type === 'received').reduce((a, t) => a + t.amount, 0);
   const sentTVM = vaultData.transactions.filter(t => t.type === 'sent').reduce((a, t) => a + t.amount, 0);
   const cashbackTVM = vaultData.transactions.filter(t => t.type === 'cashback').reduce((a, t) => a + t.amount, 0);
@@ -769,11 +752,8 @@ function populateWalletUI() {
   vaultData.balanceTVM = vaultData.initialBalanceTVM + receivedTVM + cashbackTVM - sentTVM;
   vaultData.balanceUSD = parseFloat((vaultData.balanceTVM / EXCHANGE_RATE).toFixed(2));
 
-  const tvmFormatted = formatWithCommas(vaultData.balanceTVM);
-  const usdFormatted = formatWithCommas(vaultData.balanceUSD);
-
-  document.getElementById('tvmBalance').textContent = `💰 Balance: ${tvmFormatted} TVM`;
-  document.getElementById('usdBalance').textContent = `💵 Equivalent to ${usdFormatted} USD`;
+  document.getElementById('tvmBalance').textContent = `💰 Balance: ${formatWithCommas(vaultData.balanceTVM)} TVM`;
+  document.getElementById('usdBalance').textContent = `💵 Equivalent to ${formatWithCommas(vaultData.balanceUSD)} USD`;
 
   const bioLineElement = document.getElementById('bioLineText');
   const utcTimeElement = document.getElementById('utcTime');
@@ -783,15 +763,10 @@ function populateWalletUI() {
   }
 }
 
-/**
- * Initialize bioConstant to "now". Then bump every 30s. 
- * This ensures if the user was away a long time, we skip forward.
- */
 function initializeBioConstantAndUTCTime() {
   if (bioLineInterval) clearInterval(bioLineInterval);
 
   const nowSec = Math.floor(Date.now() / 1000);
-  // adjust the bioConstant by the elapsed time since lastUTCTimestamp
   const delta = nowSec - vaultData.lastUTCTimestamp;
   vaultData.bioConstant += delta;
   vaultData.lastUTCTimestamp = nowSec;
@@ -806,9 +781,9 @@ function initializeBioConstantAndUTCTime() {
   }, 30000);
 }
 
-/********************************************************
- * Copy / Export
- ********************************************************/
+/******************************
+ * Copy / Export Functions
+ ******************************/
 function handleCopyBioIBAN() {
   const ibEl = document.getElementById('bioibanInput');
   if (!ibEl || !ibEl.value.trim()) {
@@ -854,10 +829,9 @@ function exportTransactionTable() {
   document.body.removeChild(link);
 }
 
-/********************************************************
- * Custom Snapshot Serialization (NOT JSON)
- * - embedding entire vault in the BioCatch
- ********************************************************/
+/******************************
+ * Custom Snapshot Serialization
+ ******************************/
 function serializeVaultSnapshotForBioCatch(vData) {
   const fieldSep = '|';
   const txSep = '^';
@@ -936,20 +910,10 @@ function deserializeVaultSnapshotFromBioCatch(base64String) {
   };
 }
 
-/********************************************************
+/******************************
  * Generating & Validating Bio‑Catch Numbers
- ********************************************************/
-// -----------------------------------------------------------------------
-// UPDATED: Now the BioCatch number has 8 parts:
-//   Part 0: "Bio" prefix
-//   Part 1: (senderNumeric + receiverNumeric)
-//   Part 2: timestamp (of the main TX)
-//   Part 3: transaction amount
-//   Part 4: sender’s balance at time of TX
-//   Part 5: sender’s Bio‑IBAN
-//   Part 6: finalChainHash (of sender vault)
-//   Part 7: entire vault snapshot (encoded)
-// -----------------------------------------------------------------------
+ ******************************/
+// BioCatch number format: Bio-{firstPart}-{timestamp}-{amount}-{senderBalance}-{senderBioIBAN}-{finalChainHash}-{vaultSnapshotEncoded}
 function generateBioCatchNumber(senderBioIBAN, receiverBioIBAN, amount, timestamp, senderBalance, finalChainHash) {
   const senderVaultSnapshotEncoded = serializeVaultSnapshotForBioCatch(vaultData);
   const senderNumeric = parseInt(senderBioIBAN.slice(3));
@@ -958,17 +922,12 @@ function generateBioCatchNumber(senderBioIBAN, receiverBioIBAN, amount, timestam
   return `Bio-${firstPart}-${timestamp}-${amount}-${senderBalance}-${senderBioIBAN}-${finalChainHash}-${senderVaultSnapshotEncoded}`;
 }
 
-// -----------------------------------------------------------------------
-// UPDATED: validateBioCatchNumber now expects 8 parts and confirms that
-// the encoded amount matches the claimed amount as well as verifying the timestamp.
-// -----------------------------------------------------------------------
 function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
   const parts = bioCatchNumber.split('-');
   if (parts.length !== 8 || parts[0] !== 'Bio') {
     return { valid: false, message: 'BioCatch must have 8 parts with prefix "Bio-".' };
   }
-  const [prefix, firstPartStr, timestampStr, amountStr, claimedSenderBalanceStr, claimedSenderIBAN, chainHash, snapshotEncoded] = parts;
-
+  const [ , firstPartStr, timestampStr, amountStr, claimedSenderBalanceStr, claimedSenderIBAN, chainHash, snapshotEncoded ] = parts;
   const firstPart = parseInt(firstPartStr);
   const encodedTimestamp = parseInt(timestampStr);
   const encodedAmount = parseFloat(amountStr);
@@ -977,7 +936,6 @@ function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
     return { valid: false, message: 'Numeric parts must be valid numbers.' };
   }
 
-  // Compute sender and receiver numeric values.
   const senderNumeric = parseInt(claimedSenderIBAN.slice(3));
   const receiverNumeric = firstPart - senderNumeric;
   if (receiverNumeric < 0) {
@@ -988,7 +946,6 @@ function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
     return { valid: false, message: 'Mismatch in sum of IBAN numerics.' };
   }
 
-  // *** NEW: Validate that the BioCatch is intended for THIS receiver ***
   if (!vaultData.bioIBAN) {
     return { valid: false, message: 'Receiver IBAN not found in vault.' };
   }
@@ -997,19 +954,16 @@ function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
     return { valid: false, message: 'This BioCatch is not intended for this receiver IBAN.' };
   }
 
-  // Check that the encoded amount matches the claimed amount.
   if (encodedAmount !== claimedAmount) {
     return { valid: false, message: 'Claimed amount does not match BioCatch amount.' };
   }
 
-  // Validate timestamp window.
   const currentTimestamp = vaultData.lastUTCTimestamp;
   const timeDiff = Math.abs(currentTimestamp - encodedTimestamp);
   if (timeDiff > TRANSACTION_VALIDITY_SECONDS) {
     return { valid: false, message: 'Timestamp outside ±12min window.' };
   }
 
-  // Validate sender IBAN structure.
   const expectedSenderIBAN = `BIO${senderNumeric}`;
   if (claimedSenderIBAN !== expectedSenderIBAN) {
     return { valid: false, message: 'Mismatched Sender IBAN in BioCatch.' };
@@ -1034,22 +988,17 @@ function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
   };
 }
 
-
 function validateBioIBAN(bioIBAN) {
   if (!bioIBAN.startsWith('BIO')) return false;
   const numericPart = parseInt(bioIBAN.slice(3));
   return !isNaN(numericPart) && numericPart > 0;
 }
 
-/********************************************************
+/******************************
  * Transaction Handlers
- ********************************************************/
+ ******************************/
 let transactionLock = false;
 
-/**
- * handleSendTransaction — ensures daily bonus is consistent with time,
- * updates the chain with the same 'nowSec' for both the bonus TX and main TX
- */
 async function handleSendTransaction() {
   if (!vaultUnlocked) {
     alert('❌ Please unlock the vault first.');
@@ -1082,22 +1031,17 @@ async function handleSendTransaction() {
 
   transactionLock = true;
   try {
-    // First, sync up the bioConstant with the current real time
     const nowSec = Math.floor(Date.now() / 1000);
     const delta = nowSec - vaultData.lastUTCTimestamp;
     vaultData.bioConstant += delta;
     vaultData.lastUTCTimestamp = nowSec;
 
-    // If the TX is large, apply a daily bonus if possible.
-    // The bonus transaction (if applicable) is added BEFORE the main transaction.
     if (amount > LARGE_TX_THRESHOLD && canReceiveCashback(nowSec)) {
       await giveCashbackBonus(nowSec);
     }
 
-    // Re-hash the chain (after possibly adding a bonus TX)
     vaultData.finalChainHash = await computeFullChainHash(vaultData.transactions);
 
-    // Now add the main "sent" TX with its own BioCatch number
     const plainBioCatchNumber = generateBioCatchNumber(
       vaultData.bioIBAN,
       receiverBioIBAN,
@@ -1107,7 +1051,6 @@ async function handleSendTransaction() {
       vaultData.finalChainHash
     );
 
-    // Check for duplication
     for (let tx of vaultData.transactions) {
       if (tx.bioCatch) {
         const existingPlain = await decryptBioCatchNumber(tx.bioCatch);
@@ -1120,7 +1063,6 @@ async function handleSendTransaction() {
     }
     const obfuscatedCatch = await encryptBioCatchNumber(plainBioCatchNumber);
 
-    // Build the "sent" TX
     const newTx = {
       type: 'sent',
       receiverBioIBAN,
@@ -1154,10 +1096,6 @@ async function handleSendTransaction() {
   }
 }
 
-/**
- * handleReceiveTransaction — ensures we sync the bioConstant first
- * so that the 'received' TX has consistent time & bioConstant.
- */
 async function handleReceiveTransaction() {
   if (!vaultUnlocked) {
     alert('❌ Please unlock the vault first.');
@@ -1177,7 +1115,6 @@ async function handleReceiveTransaction() {
 
   transactionLock = true;
   try {
-    // Sync the bioConstant with current time
     const nowSec = Math.floor(Date.now() / 1000);
     const delta = nowSec - vaultData.lastUTCTimestamp;
     vaultData.bioConstant += delta;
@@ -1190,7 +1127,6 @@ async function handleReceiveTransaction() {
       return;
     }
 
-    // Check if already used
     for (let tx of vaultData.transactions) {
       if (tx.bioCatch) {
         const existingPlain = await decryptBioCatchNumber(tx.bioCatch);
@@ -1222,7 +1158,6 @@ async function handleReceiveTransaction() {
       return;
     }
 
-    // Accept the TX
     const newRx = {
       type: 'received',
       senderBioIBAN: claimedSenderIBAN,
@@ -1255,15 +1190,14 @@ async function handleReceiveTransaction() {
   }
 }
 
-/********************************************************
+/******************************
  * Transaction Table / Popups
- ********************************************************/
+ ******************************/
 function renderTransactionTable() {
   const tbody = document.getElementById('transactionBody');
   if (!tbody) return;
   tbody.innerHTML = '';
 
-  // ترتيب المعاملات تنازلياً بناءً على الـ timestamp
   vaultData.transactions
     .sort((a, b) => b.timestamp - a.timestamp)
     .forEach(tx => {
@@ -1290,7 +1224,6 @@ function renderTransactionTable() {
         styleCell = 'style="background-color: #CCFFFF;"';
       }
 
-      // في خانة bioCatch: نضع القيمة داخل عنصر span مخفي، ونضيف زر COPY ظاهر
       let bioCatchHTML = '';
       if (tx.bioCatch) {
         bioCatchHTML = `
@@ -1313,7 +1246,6 @@ function renderTransactionTable() {
 }
 
 function copyBioCatch(button) {
-  // نحصل على العنصر المخفي الذي يحتوي على قيمة bioCatch من داخل الخلية
   const cell = button.parentElement;
   const hiddenSpan = cell.querySelector('.hidden-biocatch');
   if (hiddenSpan) {
@@ -1321,7 +1253,6 @@ function copyBioCatch(button) {
     navigator.clipboard.writeText(bioCatchValue)
       .then(() => {
         console.log('تم نسخ قيمة bioCatch إلى الحافظة');
-        // يمكنك هنا إضافة إشعار للمستخدم إذا رغبت
       })
       .catch(err => {
         console.error('فشل نسخ قيمة bioCatch:', err);
@@ -1329,50 +1260,42 @@ function copyBioCatch(button) {
   }
 }
 
-
 function showBioCatchPopup(encryptedBioCatch) {
   const popup = document.getElementById('bioCatchPopup');
   const textEl = document.getElementById('bioCatchNumberText');
   if (!popup || !textEl) return;
-
   textEl.textContent = encryptedBioCatch;
   popup.style.display = 'flex';
 }
 
-/********************************************************
+/******************************
  * Initialization of UI
- ********************************************************/
+ ******************************/
 function initializeUI() {
   const enterVaultBtn = document.getElementById('enterVaultBtn');
   if (enterVaultBtn) {
     enterVaultBtn.addEventListener('click', unlockVault);
   }
-
   const lockVaultBtn = document.getElementById('lockVaultBtn');
   if (lockVaultBtn) {
     lockVaultBtn.addEventListener('click', lockVault);
   }
-
   const catchInBtn = document.getElementById('catchInBtn');
   if (catchInBtn) {
     catchInBtn.addEventListener('click', handleReceiveTransaction);
   }
-
   const catchOutBtn = document.getElementById('catchOutBtn');
   if (catchOutBtn) {
     catchOutBtn.addEventListener('click', handleSendTransaction);
   }
-
   const copyBioIBANBtn = document.getElementById('copyBioIBANBtn');
   if (copyBioIBANBtn) {
     copyBioIBANBtn.addEventListener('click', handleCopyBioIBAN);
   }
-
   const exportBtn = document.getElementById('exportBtn');
   if (exportBtn) {
     exportBtn.addEventListener('click', exportTransactionTable);
   }
-
   const bioCatchPopup = document.getElementById('bioCatchPopup');
   if (bioCatchPopup) {
     const closeBioCatchPopupBtn = document.getElementById('closeBioCatchPopup');
@@ -1395,20 +1318,18 @@ function initializeUI() {
         }
       });
     }
-    // close popup if user clicks outside of it
     window.addEventListener('click', (evt) => {
       if (evt.target === bioCatchPopup) {
         bioCatchPopup.style.display = 'none';
       }
     });
   }
-
   enforceSingleVault();
 }
 
-/********************************************************
- * Optional: Modal-based passphrase UI (not currently used)
- ********************************************************/
+/******************************
+ * Optional: Modal-based Passphrase UI
+ ******************************/
 async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Enter Passphrase' }) {
   return new Promise((resolve) => {
     const passModal = document.getElementById('passModal');
