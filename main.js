@@ -995,6 +995,62 @@ function validateBioIBAN(bioIBAN) {
 }
 
 /******************************
+ * Extra Sender Vault Snapshot Integrity Verification
+ ******************************/
+/**
+ * validateSenderVaultSnapshot()
+ *
+ * Performs extra integrity checks on the sender's vault snapshot (embedded in the BioCatch).
+ * It re-computes the chain hash, recalculates the balance, validates the bioConstant,
+ * and verifies that the sender’s Bio‑IBAN is derived correctly.
+ *
+ * @param {object} senderSnapshot - The sender's full vault snapshot.
+ * @param {string} claimedSenderIBAN - The sender's Bio‑IBAN claimed in the transaction.
+ *
+ * @returns {object} - { valid: <boolean>, errors: [<string>, ...] }
+ */
+async function validateSenderVaultSnapshot(senderSnapshot, claimedSenderIBAN) {
+  const errors = [];
+
+  // 1. Validate the transaction chain hash from snapshot.
+  try {
+    const computedChainHash = await computeFullChainHash(senderSnapshot.transactions);
+    if (computedChainHash !== senderSnapshot.finalChainHash) {
+      errors.push(`Chain hash mismatch: computed ${computedChainHash} vs stored ${senderSnapshot.finalChainHash}`);
+    }
+  } catch (err) {
+    errors.push(`Error computing chain hash: ${err.message}`);
+  }
+
+  // 2. Recalculate the balance from snapshot transactions.
+  const receivedTVM = senderSnapshot.transactions.filter(tx => tx.type === 'received').reduce((sum, tx) => sum + tx.amount, 0);
+  const sentTVM = senderSnapshot.transactions.filter(tx => tx.type === 'sent').reduce((sum, tx) => sum + tx.amount, 0);
+  const cashbackTVM = senderSnapshot.transactions.filter(tx => tx.type === 'cashback').reduce((sum, tx) => sum + tx.amount, 0);
+  const computedBalance = senderSnapshot.initialBalanceTVM + receivedTVM + cashbackTVM - sentTVM;
+  if (computedBalance !== senderSnapshot.balanceTVM) {
+    errors.push(`Balance mismatch: computed ${computedBalance} vs stored ${senderSnapshot.balanceTVM}`);
+  }
+
+  // 3. Validate the bioConstant based on elapsed time.
+  const expectedBioConstant = senderSnapshot.initialBioConstant + (senderSnapshot.lastUTCTimestamp - senderSnapshot.joinTimestamp);
+  if (expectedBioConstant !== senderSnapshot.bioConstant) {
+    errors.push(`BioConstant mismatch: expected ${expectedBioConstant} vs stored ${senderSnapshot.bioConstant}`);
+  }
+
+  // 4. Validate sender's Bio‑IBAN derivation.
+  // (Assuming your derivation is "BIO" + (bioConstant + joinTimestamp))
+  const computedSenderIBAN = `BIO${senderSnapshot.bioConstant + senderSnapshot.joinTimestamp}`;
+  if (claimedSenderIBAN !== computedSenderIBAN) {
+    errors.push(`Sender Bio‑IBAN mismatch: computed ${computedSenderIBAN} vs claimed ${claimedSenderIBAN}`);
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors: errors
+  };
+}
+
+/******************************
  * Transaction Handlers
  ******************************/
 let transactionLock = false;
@@ -1154,6 +1210,13 @@ async function handleReceiveTransaction() {
     }
     if (senderVaultSnapshot.finalChainHash !== chainHash) {
       alert('❌ The chainHash in the Bio‑Catch does not match the snapshot’s finalChainHash!');
+      transactionLock = false;
+      return;
+    }
+    // Extra integrity check: validate sender's snapshot for balance and bioConstant
+    const snapshotValidation = await validateSenderVaultSnapshot(senderVaultSnapshot, claimedSenderIBAN);
+    if (!snapshotValidation.valid) {
+      alert("❌ Sender snapshot integrity check failed: " + snapshotValidation.errors.join("; "));
       transactionLock = false;
       return;
     }
