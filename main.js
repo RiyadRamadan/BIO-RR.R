@@ -1,6 +1,6 @@
 /***********************************************************************
  * main.js — Comprehensive Bio‑Vault Code (with enhanced integrity checks,
- *           immutable balance chain, and export backup functionality)
+ * immutable balance chain, and export backup functionality)
  *
  * Features:
  *  - Vault creation/unlock (PBKDF2 + AES-GCM encryption, WebAuthn biometrics)
@@ -33,8 +33,8 @@ const MAX_AUTH_ATTEMPTS = 3;
 // Every vault must start with an immutable balance of 3000 TVM.
 const INITIAL_BALANCE_TVM = 3000;
 
-// For bonus increments (if applicable)
-const THREE_MONTHS_SECONDS = 7776000;    // 90 days => 7,776,000 seconds
+// For bonus increments
+const THREE_MONTHS_SECONDS = 7776000;    // 90 days
 const MAX_ANNUAL_INTERVALS = 4;
 const BIO_LINE_INCREMENT_AMOUNT = 15000; // 15,000 TVM per interval
 
@@ -44,16 +44,16 @@ const STORAGE_CHECK_INTERVAL = 300000;   // 5 minutes
 // Daily-limit logic:
 const MAX_BONUS_PER_DAY = 3;
 const LARGE_TX_BONUS = 400;
-const LARGE_TX_THRESHOLD = 1200; // If TX > 1200 TVM => bonus
+const LARGE_TX_THRESHOLD = 1200; // If TX > 1200 TVM → bonus
 
-// Cross-tab sync channel using BroadcastChannel
+// Cross‑tab sync channel using BroadcastChannel
 const vaultSyncChannel = new BroadcastChannel('vault-sync');
 
 let vaultUnlocked = false;
-let derivedKey = null; // Cryptographic key after unlocking
+let derivedKey = null; // cryptographic key after unlocking
 let bioLineIntervalTimer = null;
 
-// The vaultData structure – note that the immutable starting balance is INITIAL_BALANCE_TVM (3000 TVM)
+// The vaultData structure (immutable starting balance and initial bio‑constant)
 let vaultData = {
   bioIBAN: null,
   initialBalanceTVM: INITIAL_BALANCE_TVM,
@@ -401,7 +401,7 @@ async function createNewVault(pin) {
   vaultData.incrementsUsed = 0;
   vaultData.lastTransactionHash = '';
   vaultData.finalChainHash = '';
-  // Attempt to create a new WebAuthn credential
+  // Create biometric credential
   const credential = await performBiometricAuthenticationForCreation();
   if (!credential || !credential.id) {
     alert('Biometric credential creation failed/cancelled. Vault cannot be created.');
@@ -546,6 +546,26 @@ async function promptAndSaveVault() {
 }
 
 /******************************
+ * Export Backup Function
+ ******************************/
+/**
+ * exportVaultBackup():
+ * Exports the current vaultData as a JSON file for backup.
+ */
+function exportVaultBackup() {
+  const backupData = JSON.stringify(vaultData, null, 2);
+  const blob = new Blob([backupData], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "vault_backup.json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/******************************
  * Extra: Validate Sender Snapshot Integrity
  ******************************/
 async function validateSenderVaultSnapshot(senderSnapshot, claimedSenderIBAN) {
@@ -564,10 +584,8 @@ async function validateSenderVaultSnapshot(senderSnapshot, claimedSenderIBAN) {
   } catch (err) {
     errors.push(`Error computing chain hash: ${err.message}`);
   }
-  const receivedTVM = senderSnapshot.transactions.filter(tx => tx.type === 'received')
-                          .reduce((sum, tx) => sum + tx.amount, 0);
-  const sentTVM = senderSnapshot.transactions.filter(tx => tx.type === 'sent')
-                        .reduce((sum, tx) => sum + tx.amount, 0);
+  const receivedTVM = senderSnapshot.transactions.filter(tx => tx.type === 'received').reduce((sum, tx) => sum + tx.amount, 0);
+  const sentTVM = senderSnapshot.transactions.filter(tx => tx.type === 'sent').reduce((sum, tx) => sum + tx.amount, 0);
   const computedBalance = senderSnapshot.initialBalanceTVM + receivedTVM - sentTVM;
   if (computedBalance !== senderSnapshot.balanceTVM) {
     errors.push(`Balance mismatch: computed ${computedBalance} vs stored ${senderSnapshot.balanceTVM}`);
@@ -660,7 +678,7 @@ function deserializeVaultSnapshotFromBioCatch(base64String) {
 /******************************
  * Generating & Validating Bio‑Catch Numbers
  ******************************/
-// Generate an 8-part BioCatch Number:
+// Generate an 8‑part BioCatch Number:
 // Format: Bio-{firstPart}-{timestamp}-{amount}-{senderBalance}-{senderBioIBAN}-{finalChainHash}-{vaultSnapshotEncoded}
 async function generateBioCatchNumber(senderBioIBAN, receiverBioIBAN, amount, timestamp, senderBalance, finalChainHash) {
   const senderVaultSnapshotEncoded = serializeVaultSnapshotForBioCatch(vaultData);
@@ -701,17 +719,14 @@ async function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
   if (receiverNumeric !== receiverNumericFromVault) {
     return { valid: false, message: 'This BioCatch is not intended for this receiver IBAN.' };
   }
-  // Check that the encoded amount matches the claimed amount.
   if (encodedAmount !== claimedAmount) {
     return { valid: false, message: 'Claimed amount does not match BioCatch amount.' };
   }
-  // Validate timestamp window.
   const currentTimestamp = vaultData.lastUTCTimestamp;
   const timeDiff = Math.abs(currentTimestamp - encodedTimestamp);
   if (timeDiff > TRANSACTION_VALIDITY_SECONDS) {
     return { valid: false, message: 'Timestamp outside ±12min window.' };
   }
-  // Validate sender IBAN structure.
   const expectedSenderIBAN = `BIO${senderNumeric}`;
   if (claimedSenderIBAN !== expectedSenderIBAN) {
     return { valid: false, message: 'Mismatched Sender IBAN in BioCatch.' };
@@ -768,12 +783,10 @@ async function handleSendTransaction() {
   }
   transactionLock = true;
   try {
-    // Sync bioConstant with current time
     const nowSec = Math.floor(Date.now() / 1000);
     const delta = nowSec - vaultData.lastUTCTimestamp;
     vaultData.bioConstant += delta;
     vaultData.lastUTCTimestamp = nowSec;
-    // Apply bonus if applicable
     if (amount > LARGE_TX_THRESHOLD && canReceiveCashback(nowSec)) {
       await giveCashbackBonus(nowSec);
     }
@@ -786,7 +799,6 @@ async function handleSendTransaction() {
       vaultData.balanceTVM,
       vaultData.finalChainHash
     );
-    // Check for duplicate BioCatch numbers
     for (let tx of vaultData.transactions) {
       if (tx.bioCatch) {
         const existingPlain = await decryptBioCatchNumber(tx.bioCatch);
@@ -851,7 +863,6 @@ async function handleReceiveTransaction() {
       transactionLock = false;
       return;
     }
-    // Check for duplicate usage
     for (let tx of vaultData.transactions) {
       if (tx.bioCatch) {
         const existingPlain = await decryptBioCatchNumber(tx.bioCatch);
@@ -981,56 +992,6 @@ function handleCopyBioIBAN() {
     });
 }
 
-function exportTransactionTable() {
-  const table = document.getElementById('transactionTable');
-  if (!table) {
-    alert('No transaction table found.');
-    return;
-  }
-  const rows = table.querySelectorAll('tr');
-  let csvContent = "data:text/csv;charset=utf-8,";
-  rows.forEach(r => {
-    const cols = r.querySelectorAll('th, td');
-    const rowData = [];
-    cols.forEach(c => {
-      let data = c.innerText.replace(/"/g, '""');
-      if (data.includes(',')) {
-        data = `"${data}"`;
-      }
-      rowData.push(data);
-    });
-    csvContent += rowData.join(",") + "\r\n";
-  });
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute("download", "transaction_history.csv");
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
-/******************************
- * Export Vault Backup Function
- ******************************/
-/**
- * exportVaultBackup():
- * Exports the current vaultData as a JSON file so that the user
- * can store it externally (e.g., in iCloud or Google Drive).
- */
-function exportVaultBackup() {
-  const backupData = JSON.stringify(vaultData, null, 2);
-  const blob = new Blob([backupData], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "vault_backup.json";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
 /******************************
  * UI & Synchronization Helpers
  ******************************/
@@ -1051,7 +1012,6 @@ function initializeBioConstantAndUTCTime() {
 
 function populateWalletUI() {
   document.getElementById('bioibanInput').value = vaultData.bioIBAN || 'BIO...';
-  // Calculate balance using immutable initial balance and transactions.
   const receivedTVM = vaultData.transactions.filter(tx => tx.type === 'received')
                          .reduce((sum, tx) => sum + tx.amount, 0);
   const sentTVM = vaultData.transactions.filter(tx => tx.type === 'sent')
@@ -1066,6 +1026,38 @@ function populateWalletUI() {
   document.getElementById('utcTime').textContent = formatDisplayDate(vaultData.lastUTCTimestamp);
 }
 
+function exportTransactionTable() {
+  const table = document.getElementById('transactionTable');
+  if (!table) {
+    alert('No transaction table found.');
+    return;
+  }
+  const rows = table.querySelectorAll('tr');
+  let csvContent = "data:text/csv;charset=utf-8,";
+  rows.forEach(r => {
+    const cols = r.querySelectorAll('th, td');
+    const rowData = [];
+    cols.forEach(c => {
+      let d = c.innerText.replace(/"/g, '""');
+      if (d.includes(',')) {
+        d = `"${d}"`;
+      }
+      rowData.push(d);
+    });
+    csvContent += rowData.join(",") + "\r\n";
+  });
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", "transaction_history.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/******************************
+ * Initialization of UI
+ ******************************/
 function initializeUI() {
   const enterVaultBtn = document.getElementById('enterVaultBtn');
   if (enterVaultBtn) {
@@ -1079,7 +1071,7 @@ function initializeUI() {
   const catchOutBtn = document.getElementById('catchOutBtn');
   const copyBioIBANBtn = document.getElementById('copyBioIBANBtn');
   const exportBtn = document.getElementById('exportBtn');
-  const exportBackupBtn = document.getElementById('exportBackupBtn'); // For cloud backup
+  const exportBackupBtn = document.getElementById('exportBackupBtn'); // For cloud backup export
   if (lockVaultBtn) lockVaultBtn.addEventListener('click', lockVault);
   if (catchInBtn) catchInBtn.addEventListener('click', handleReceiveTransaction);
   if (catchOutBtn) catchOutBtn.addEventListener('click', handleSendTransaction);
@@ -1203,4 +1195,5 @@ function enforceSingleVault() {
 // of the Balance Chain system. It includes robust integrity checks,
 // an immutable starting balance of 3000 TVM, bonus validations via bio‑line
 // increments, snapshot serialization/deserialization, multi‑tab sync,
-// and an export backup function for cloud storage. Test thoroughly before deployment.
+// export backup functionality (for external backup to iCloud, Google Drive, etc.), 
+// and UI integration. Test thoroughly before deployment.
