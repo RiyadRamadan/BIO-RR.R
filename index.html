@@ -41,12 +41,9 @@
       margin-top: 0;
       font-size: 2em;
     }
-
-    h2,
-    h3 {
+    h2, h3 {
       margin: 10px 0;
     }
-
     .hidden {
       display: none;
     }
@@ -63,7 +60,6 @@
       transition: background 0.3s ease;
       text-align: center;       
     }
-
     button:hover {
       background: #144180;
     }
@@ -73,7 +69,6 @@
       width: 85%;
       max-width: 800px;
     }
-
     .info {
       font-size: 18px;
       margin-top: 10px;
@@ -91,7 +86,6 @@
       border-radius: 5px;
       overflow: hidden;
     }
-
     #transactionTable th,
     #transactionTable td {
       padding: 10px;
@@ -99,7 +93,6 @@
       white-space: normal;
       word-wrap: break-word;
     }
-
     #transactionTable th {
       background: #f3f4f6;
     }
@@ -118,15 +111,14 @@
       flex-wrap: wrap;
     }
 
-    /* زر Lock Vault يبقى بنفس الخصائص */
+    /* Lock Vault Button */
     #lockVaultBtn {
       position: absolute;
       top: 20px;
       right: 20px;
     }
 
-    /* زر Enter Vault سيتم استخدام نفس اللون والخصائص لكن الموقع سيتم تغييره */
-    /* نزيل خاصية الـ absolute عن Enter Vault عبر تحديد قاعدة أكثر تحديداً */
+    /* Enter Vault Button */
     #lockedScreen #enterVaultBtn {
       position: static;
       margin-top: 20px;
@@ -140,7 +132,6 @@
       font-size: 14px;
       border-radius: 5px;
     }
-
     #terminateBtn:hover {
       background: #dc2626;
     }
@@ -166,20 +157,15 @@
       margin: 20px auto;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
-
-    /* Buttons coloring for Catch In / Catch Out */
     #catchInBtn {
       background: #10b981;
     }
-
     #catchInBtn:hover {
       background: #059669;
     }
-
     #catchOutBtn {
       background: #f97316;
     }
-
     #catchOutBtn:hover {
       background: #ea580c;
     }
@@ -197,7 +183,6 @@
       align-items: center;
       z-index: 9999;
     }
-
     .popup-content {
       background-color: #fff;
       color: #000;
@@ -207,7 +192,6 @@
       max-width: 400px;
       width: 80%;
     }
-
     .popup-content button {
       margin-top: 20px;
     }
@@ -226,7 +210,6 @@
     #exportBtn {
       background: #f59e0b;
     }
-
     #exportBtn:hover {
       background: #d97706;
     }
@@ -235,7 +218,6 @@
       display: inline-flex;
       align-items: center;
     }
-
     .bioimage {
       width: 3.5em;
       border-radius: 10px;
@@ -244,7 +226,6 @@
       margin-top: -20px;
     }
 
-    /* الحاوية الرئيسية لتنسيق المحتوى (تُستخدم في أجزاء أخرى من الصفحة) */
     .container {
       border-radius: 8px;
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -253,32 +234,20 @@
       text-align: center;
       color: #333;
     }
-
-    /* تنسيق الفقرات والقوائم */
-    p,
-    li {
+    p, li {
       color: #555;
       line-height: 1.6;
       font-size: 16px;
     }
-
     ul {
       list-style: none;
       padding: 0;
       margin: 15px 0;
       text-align: left;
     }
-
     ul li {
       margin-bottom: 8px;
     }
-
-    /* إخفاء الجزء الثاني بشكل افتراضي */
-    .hidden {
-      display: none;
-    }
-
-    /* تنسيق رابط "See more" العام */
     .see-more {
       color: #007BFF;
       cursor: pointer;
@@ -288,39 +257,31 @@
       font-weight: bold;
     }
 
-    /* Responsive Design */
+    /* Responsive */
     @media (max-width: 1024px) {
       #bioLineUTCContainer {
         flex-direction: column;
       }
-
       .input-field {
         width: 90%;
         max-width: none;
       }
-
       #transactionTable {
         font-size: 14px;
       }
-
       h1 {
         font-size: 1.8em;
       }
-
-      h2,
-      h3 {
+      h2, h3 {
         font-size: 1.2em;
       }
     }
-
     @media (max-width: 768px) {
       #transactionTable th:nth-child(2),
       #transactionTable td:nth-child(2) {
         max-width: 50px;
-        white-space: normal;
         word-wrap: break-word;
       }
-
       .bioimage {
         width: 2.5em;
       }
@@ -332,35 +293,27 @@
         top: 3px;
         right: 20px;
       }
-
       #catchInSection,
       #catchOutSection {
         width: 80%;
       }
-
       .input-field {
         width: 70%;
         max-width: none;
       }
-
       #bioLineUTCContainer {
         width: 72%;
       }
-
       #transactionTable {
         font-size: 13px;
       }
-
       h1 {
         font-size: 1.5em;
       }
-
-      h2,
-      h3 {
+      h2, h3 {
         font-size: 1em;
       }
     }
-
     @media (max-width: 480px) {
       button {
         padding: 8px 16px;
@@ -378,14 +331,11 @@
       #transactionTable th:nth-child(2),
       #transactionTable td:nth-child(2) {
         max-width: 50px;
-        white-space: normal;
         word-wrap: break-word;
       }
     }
 
-    /* ============================
-       تعديل استايل الأداة (Widget)
-       ============================ */
+    /* TVM widget styles */
     .tvm-widget {
       border: 1px solid #e0e0e0;
       border-radius: 10px;
@@ -396,27 +346,21 @@
       text-align: left;
       color: #333;
     }
-
-    .tvm-widget h2,
-    .tvm-widget h3 {
+    .tvm-widget h2, .tvm-widget h3 {
       text-align: center;
       color: #fff;
       margin-bottom: 15px;
     }
-
-    .tvm-widget p,
-    .tvm-widget li {
+    .tvm-widget p, .tvm-widget li {
       font-size: 16px;
       line-height: 1.6;
       color: #fff;
     }
-
     .tvm-widget ul {
       list-style: disc;
       padding-left: 20px;
       margin-bottom: 15px;
     }
-
     .tvm-widget .see-more {
       display: inline-block;
       margin-top: 15px;
@@ -430,10 +374,79 @@
       border-radius: 5px;
       transition: background-color 0.3s ease, color 0.3s ease;
     }
-
     .tvm-widget .see-more:hover {
       background-color: #007BFF;
       color: #fff;
+    }
+
+    /* 
+     =================================================
+     PASS MODAL for passphrase input (ADDED)
+     =================================================
+    */
+    #passModal {
+      display: none; /* hidden by default, shown by script */
+      position: fixed;
+      z-index: 99999;
+      left: 0; 
+      top: 0; 
+      width: 100%; 
+      height: 100%;
+      overflow: auto; 
+      background-color: rgba(0, 0, 0, 0.6);
+      justify-content: center;
+      align-items: center;
+    }
+    #passModal .popup-content {
+      background-color: #fff;
+      color: #000;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+      max-width: 400px;
+      width: 80%;
+      margin: 80px auto;
+      position: relative;
+    }
+    #passModalTitle {
+      margin-bottom: 15px;
+      font-size: 1.2em;
+      font-weight: 600;
+    }
+    #passModalInput,
+    #passModalConfirmInput {
+      width: 80%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    #passModalConfirmLabel {
+      display: none; /* shown only if confirmNeeded = true */
+      font-size: 0.9em;
+    }
+    #passModalCancelBtn,
+    #passModalSaveBtn {
+      margin: 0 5px;
+      padding: 8px 16px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #passModalCancelBtn {
+      background-color: #888;
+      color: #fff;
+    }
+    #passModalCancelBtn:hover {
+      background-color: #555;
+    }
+    #passModalSaveBtn {
+      background-color: #2258c4;
+      color: #fff;
+    }
+    #passModalSaveBtn:hover {
+      background-color: #144180;
     }
   </style>
 </head>
@@ -446,15 +459,30 @@
       <h1>Bio‑Vault</h1>
     </div>
     <h2>WELCOME TO YOUR VAULT WHERE THE TRUE VALUE OF MONEY IS.</h2>
-    <!-- سيظهر زر Enter Vault تحت النص دون تغيير خصائصه -->
+    <!-- Enter Vault button (which might not be functional in your env) -->
     <button id="enterVaultBtn" aria-label="Enter Vault">Enter Vault</button>
   </div>
 
+  <!-- 
+      PASS MODAL for passphrase input 
+      (Used by main.js => getPassphraseFromModal())
+  -->
+  <div id="passModal">
+    <div class="popup-content">
+      <h3 id="passModalTitle">Enter Passphrase</h3>
+      <label id="passModalConfirmLabel" for="passModalConfirmInput">Confirm Passphrase:</label><br>
+      <input type="password" id="passModalInput" placeholder="Enter passphrase"><br>
+      <input type="password" id="passModalConfirmInput" placeholder="Confirm passphrase"><br>
+      <button id="passModalCancelBtn">Cancel</button>
+      <button id="passModalSaveBtn">Save</button>
+    </div>
+  </div>
+
   <!-- ========================================================
-       الأداة: الجزء الخاص بشرح TVM مع خاصية "See more"
+       TVM Widget
        ======================================================== -->
   <div class="container tvm-widget" id="container">
-    <!-- الجزء الأول (دائم الظهور) -->
+    <!-- part 1 (always shown) -->
     <div id="firstPart">
       <h2>How TVM Works</h2>
       <p>
@@ -469,7 +497,7 @@
       </p>
     </div>
 
-    <!-- الجزء الثاني (مخفي بشكل افتراضي) -->
+    <!-- part 2 (hidden by default) -->
     <div id="secondPart" class="hidden">
       <h3>Additional TVM Details</h3>
       <p>
@@ -494,7 +522,7 @@
       </p>
     </div>
 
-    <!-- رابط "See more"/"See less" -->
+    <!-- toggle link -->
     <span id="toggleLink" class="see-more" onclick="toggleText()">See more</span>
   </div>
 
@@ -574,9 +602,11 @@
     <p style="color: #fff;">By RR.R to Humanity</p>
   </div>
   <button id="terminateBtn" class="hidden" aria-label="Terminate Vault">Terminate Vault</button>
-  <!-- Scripts -->
+
+  <!-- main.js script -->
   <script src="./main.js"></script>
-  <!-- وظيفة تبديل عرض الأداة (See more/See less) -->
+
+  <!-- "See more" function for the TVM widget -->
   <script>
     function toggleText() {
       const secondPart = document.getElementById('secondPart');
@@ -591,5 +621,4 @@
     }
   </script>
 </body>
-
 </html>
