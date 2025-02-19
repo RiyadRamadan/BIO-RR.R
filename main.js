@@ -1,11 +1,12 @@
 /***********************************************************************
  * main.js — Production-Ready Bio‑Vault Code
- * 
+ *
  * Enhanced:
  *  - Replaces prompt() with a modal passphrase input
  *  - Uses regex-based IBAN validation (no placeholders)
  *  - Ensures the "Enter Vault" button is properly wired
  *  - Retains all original features (periodic increments, daily-limit, etc.)
+ *  - **Now includes ES256 + RS256 in WebAuthn publicKeyCredParams** 
  *
  * Features:
  *  - Vault creation/unlock (PBKDF2 + AES-GCM encryption, WebAuthn biometrics)
@@ -35,9 +36,9 @@ const MAX_AUTH_ATTEMPTS = 3;
 const INITIAL_BALANCE_TVM = 3000;
 
 // Periodic increments
-const THREE_MONTHS_SECONDS = 7776000;  
+const THREE_MONTHS_SECONDS = 7776000;
 const MAX_ANNUAL_INTERVALS = 4;
-const BIO_LINE_INCREMENT_AMOUNT = 15000; 
+const BIO_LINE_INCREMENT_AMOUNT = 15000;
 
 const VAULT_BACKUP_KEY = 'vaultArmoredBackup';
 const STORAGE_CHECK_INTERVAL = 300000; // 5 minutes
@@ -226,6 +227,7 @@ async function deriveKeyFromPIN(pin, salt) {
  ******************************/
 async function performBiometricAuthenticationForCreation() {
   try {
+    // Updated pubKeyCredParams to include both ES256 (-7) and RS256 (-257)
     const publicKey = {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
       rp: { name: "Bio-Vault" },
@@ -234,7 +236,11 @@ async function performBiometricAuthenticationForCreation() {
         name: "bio-user",
         displayName: "Bio User"
       },
-      pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+      // Add both ES256 + RS256 for better compatibility
+      pubKeyCredParams: [
+        { type: "public-key", alg: -7 },   // ES256
+        { type: "public-key", alg: -257 } // RS256
+      ],
       authenticatorSelection: {
         authenticatorAttachment: "platform",
         userVerification: "required"
@@ -434,14 +440,7 @@ async function giveCashbackBonus(currentTimestamp) {
 
 /******************************
  * Vault Creation / Unlock
- * 
- * We replaced raw prompt() calls with
- * getPassphraseFromModal() for better UX
  ******************************/
-
-// see below for updated createNewVault() & unlockVault() implementations
-// after the code block...
-
 
 async function handleFailedAuthAttempt() {
   vaultData.authAttempts = (vaultData.authAttempts || 0) + 1;
@@ -641,6 +640,11 @@ async function generateBioCatchNumber(senderBioIBAN, receiverBioIBAN, amount, ti
   const receiverNumeric = parseInt(receiverBioIBAN.slice(3));
   const firstPart = senderNumeric + receiverNumeric;
   return `Bio-${firstPart}-${timestamp}-${amount}-${senderBalance}-${senderBioIBAN}-${finalChainHash}-${senderVaultSnapshotEncoded}`;
+}
+
+function validateBioIBAN(bioIBAN) {
+  // Simple regex requiring "BIO" + digits
+  return /^BIO\d+$/.test(bioIBAN || '');
 }
 
 async function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
@@ -1300,7 +1304,7 @@ async function createNewVault(pinFromUser = null) {
   vaultData.lastTransactionHash = '';
   vaultData.finalChainHash = '';
 
-  // Attempt to create a new WebAuthn credential
+  // Attempt to create a new WebAuthn credential (ES256 + RS256)
   const credential = await performBiometricAuthenticationForCreation();
   if (!credential || !credential.id) {
     alert('Biometric credential creation failed/cancelled. Vault cannot be created.');
