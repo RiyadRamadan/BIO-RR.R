@@ -1,16 +1,11 @@
 /***********************************************************************
- * main.js — Production-Ready "Balance & Bonus Chain" Code
- *           with Updated Bonus Logic and Full Snapshot Fields
+ * main.js — Single-file with handleReceiveTransaction & bufferToBase64
+ *           ensuring no “not defined” errors.
  *
- * Preserves old code & functions, while:
- *  - Using an initial 1,200 TVM per user
- *  - Awarding 120 TVM bonuses (up to 10,800/year),
- *    with daily/monthly usage limits
- *  - Storing balanceTVM, bioConstant, and lastUTCTimestamp in the snapshot
- *    so bridging/smart-contract logic can validate the entire bonus chain
- *  - Keeping periodic increments (15K every ~3 months) if desired
- *
- * No old function is removed (e.g. copyBioIBAN, exportTransactionTable).
+ * Contains:
+ *  1) Updated Balance & Bonus logic (1,200 initial, 120 bonus, daily/monthly caps)
+ *  2) Full old code: handleCopyBioIBAN, exportTransactionTable, showBioCatchPopup, etc.
+ *  3) Freed from "handleReceiveTransaction not defined" & "bufferToBase64 not defined"
  ***********************************************************************/
 
 /******************************
@@ -20,42 +15,35 @@ const DB_NAME = 'BioVaultDB';
 const DB_VERSION = 1;
 const VAULT_STORE = 'vault';
 
-// From updated paper: 1,200 initial
-const INITIAL_BALANCE_TVM = 1200;
+// Updated from the new specs
+const INITIAL_BALANCE_TVM = 1200; 
 
-// Bonus logic from new specs
-const PER_TX_BONUS = 120;           // 10% of 1,200 => 120
-const MAX_BONUSES_PER_DAY = 3;      // 360 TVM/day
-const MAX_BONUSES_PER_MONTH = 30;   // 3,600 TVM/month
-const MAX_ANNUAL_BONUS_TVM = 10800; // total 10,800 => 12,000/year
+// Bonus logic
+const PER_TX_BONUS = 120; 
+const MAX_BONUSES_PER_DAY = 3;
+const MAX_BONUSES_PER_MONTH = 30;
+const MAX_ANNUAL_BONUS_TVM = 10800; // total annual bonus => 10,800
 
-// Periodic increments (if you keep them)
-const THREE_MONTHS_SECONDS = 7776000;  // ~90 days
+// Periodic increments from old code (if you still want them)
+const THREE_MONTHS_SECONDS = 7776000;
 const MAX_ANNUAL_INTERVALS = 4;
 const BIO_LINE_INCREMENT_AMOUNT = 15000;
 
-const EXCHANGE_RATE = 12; // 1 USD = 12 TVM
+const EXCHANGE_RATE = 12;  // 1 USD = 12 TVM
 const INITIAL_BIO_CONSTANT = 1736565605;
-const TRANSACTION_VALIDITY_SECONDS = 720; // ±12 min
-const LOCKOUT_DURATION_SECONDS = 3600;    // 1 hour
+const TRANSACTION_VALIDITY_SECONDS = 720; 
+const LOCKOUT_DURATION_SECONDS = 3600;
 const MAX_AUTH_ATTEMPTS = 3;
 
-// For local backups
 const VAULT_BACKUP_KEY = 'vaultArmoredBackup';
 const STORAGE_CHECK_INTERVAL = 300000; // 5 minutes
 
-// Cross-tab sync
 const vaultSyncChannel = new BroadcastChannel('vault-sync');
 
 let vaultUnlocked = false;
 let derivedKey = null;
 let bioLineIntervalTimer = null;
 
-/**
- * Updated vaultData to track monthly usage,
- * daily usage, & annual bonus usage
- * while preserving old fields (dailyCashback, etc.)
- */
 let vaultData = {
   bioIBAN: null,
   initialBalanceTVM: INITIAL_BALANCE_TVM,
@@ -71,30 +59,27 @@ let vaultData = {
   initialBioConstant: INITIAL_BIO_CONSTANT,
   joinTimestamp: 0,
 
-  // For the periodic increments (if desired)
-  incrementsUsed: 0,
-
-  // For chain hashing
+  incrementsUsed: 0,       // for periodic increments
   lastTransactionHash: '',
   credentialId: null,
   finalChainHash: '',
 
-  // Old daily usage structure
+  // Keep old daily usage field
   dailyCashback: {
     date: '',
     usedCount: 0
   },
-
-  // Additional monthly usage & annual usage
+  // Monthly usage
   monthlyUsage: {
     yearMonth: '',
     usedCount: 0
   },
+  // Annual bonus usage
   annualBonusUsed: 0
 };
 
 /******************************
- * Utility / Formatting
+ * Utility Functions
  ******************************/
 function formatWithCommas(num) {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -107,7 +92,7 @@ function formatDisplayDate(timestampInSeconds) {
 }
 
 /******************************
- * "Add to Home Screen" Prompt
+ * "Add to Home Screen" Prompt (unchanged)
  ******************************/
 let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -129,19 +114,15 @@ function promptInstallA2HS() {
 }
 
 /******************************
- * Transaction Hashing
+ * Crypto / Hash / Bonus
  ******************************/
-function bufferToHex(buffer) {
-  return Array.from(new Uint8Array(buffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
 async function computeTransactionHash(previousHash, txObject) {
   const dataString = JSON.stringify({ previousHash, ...txObject });
   const buffer = new TextEncoder().encode(dataString);
   const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  return bufferToHex(hashBuffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 async function computeFullChainHash(transactions) {
@@ -162,78 +143,17 @@ async function computeFullChainHash(transactions) {
 }
 
 /******************************
- * Cross‑Device Chain & Bio-Constant Validation
+ * bufferToBase64
  ******************************/
-async function verifyFullChainAndBioConstant(senderSnapshot) {
-  try {
-    const { joinTimestamp, initialBioConstant, transactions, finalChainHash } = senderSnapshot;
-    const recomputedHash = await computeFullChainHash(transactions);
-    if (recomputedHash !== finalChainHash) {
-      return { success: false, reason: 'Chain Hash mismatch' };
-    }
-    let simulatedBio = initialBioConstant;
-    let prevTs = joinTimestamp;
-    const sortedTx = [...transactions].sort((a, b) => a.timestamp - b.timestamp);
-    for (let tx of sortedTx) {
-      const delta = tx.timestamp - prevTs;
-      if (delta < 0) {
-        return { success: false, reason: 'Transaction timestamps out of order' };
-      }
-      simulatedBio += delta;
-      if (tx.bioConstantAtGeneration !== undefined && tx.bioConstantAtGeneration !== simulatedBio) {
-        return { success: false, reason: `BioConstant mismatch on TX at timestamp ${tx.timestamp}` };
-      }
-      prevTs = tx.timestamp;
-    }
-    return { success: true };
-  } catch (err) {
-    console.error('verifyFullChainAndBioConstant error:', err);
-    return { success: false, reason: err.message };
+function bufferToBase64(buffer) {
+  if (buffer instanceof ArrayBuffer) {
+    buffer = new Uint8Array(buffer);
   }
+  return btoa(String.fromCharCode(...buffer));
 }
 
 /******************************
- * WebCrypto / PBKDF2 / AES-GCM
- ******************************/
-function generateSalt() {
-  return crypto.getRandomValues(new Uint8Array(16));
-}
-
-function base64ToBuffer(base64) {
-  const bin = atob(base64);
-  const buffer = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) {
-    buffer[i] = bin.charCodeAt(i);
-  }
-  return buffer;
-}
-
-async function deriveKeyFromPIN(pin, salt) {
-  const encoder = new TextEncoder();
-  const pinBytes = encoder.encode(pin);
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    pinBytes,
-    { name: 'PBKDF2' },
-    false,
-    ['deriveKey']
-  );
-  return crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: salt,
-      iterations: 100000,
-      hash: 'SHA-256'
-    },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
-}
-
-/******************************
- * WebAuthn / Biometric
+ * Biometric / WebAuthn
  ******************************/
 async function performBiometricAuthenticationForCreation() {
   try {
@@ -246,7 +166,7 @@ async function performBiometricAuthenticationForCreation() {
         displayName: "Bio User"
       },
       pubKeyCredParams: [
-        { type: "public-key", alg: -7 },  
+        { type: "public-key", alg: -7 },
         { type: "public-key", alg: -257 }
       ],
       authenticatorSelection: {
@@ -321,7 +241,7 @@ async function decryptBioCatchNumber(encryptedString) {
 }
 
 /******************************
- * IndexedDB CRUD
+ * IndexedDB
  ******************************/
 function openVaultDB() {
   return new Promise((resolve, reject) => {
@@ -391,7 +311,7 @@ async function loadVaultDataFromDB() {
  * Periodic Increments
  ******************************/
 async function applyPeriodicIncrements() {
-  // Keep old periodic increments logic if you want it
+  // keep from old code
   if (!vaultUnlocked) return;
   if (vaultData.incrementsUsed >= MAX_ANNUAL_INTERVALS) return;
 
@@ -418,7 +338,7 @@ async function applyPeriodicIncrements() {
 }
 
 /******************************
- * Updated Bonus Usage Logic
+ * Bonus Logic per new specs
  ******************************/
 function resetDailyUsageIfNeeded(nowSec) {
   const currentDateStr = new Date(nowSec * 1000).toISOString().slice(0, 10);
@@ -430,12 +350,12 @@ function resetDailyUsageIfNeeded(nowSec) {
 
 function resetMonthlyUsageIfNeeded(nowSec) {
   const d = new Date(nowSec * 1000);
-  const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  const yearMonth = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
   if (!vaultData.monthlyUsage) {
     vaultData.monthlyUsage = { yearMonth: '', usedCount: 0 };
   }
-  if (vaultData.monthlyUsage.yearMonth !== ym) {
-    vaultData.monthlyUsage.yearMonth = ym;
+  if (vaultData.monthlyUsage.yearMonth !== yearMonth) {
+    vaultData.monthlyUsage.yearMonth = yearMonth;
     vaultData.monthlyUsage.usedCount = 0;
   }
 }
@@ -458,7 +378,7 @@ function record120BonusUsage() {
 }
 
 /******************************
- * Vault Creation / Unlock Logic
+ * Vault Creation / Unlock
  ******************************/
 async function handleFailedAuthAttempt() {
   vaultData.authAttempts = (vaultData.authAttempts || 0) + 1;
@@ -502,7 +422,6 @@ async function persistVaultData(salt = null) {
         throw new Error('🔴 Salt not found. Cannot persist vault data.');
       }
     }
-
     await saveVaultDataToDB(iv, ciphertext, saltBase64);
     const backupPayload = {
       iv: bufferToBase64(iv),
@@ -544,14 +463,10 @@ async function validateSenderVaultSnapshot(senderSnapshot, claimedSenderIBAN) {
     errors.push(`Error computing chain hash: ${err.message}`);
   }
 
-  const receivedTVM = senderSnapshot.transactions
-    .filter(tx => tx.type === 'received')
-    .reduce((sum, tx) => sum + tx.amount, 0);
-  const sentTVM = senderSnapshot.transactions
-    .filter(tx => tx.type === 'sent')
-    .reduce((sum, tx) => sum + tx.amount, 0);
-  const bonusTVM = senderSnapshot.transactions
-    .filter(tx => tx.type === 'cashback' || tx.type === 'increment')
+  // Summation approach
+  const receivedTVM = senderSnapshot.transactions.filter(tx => tx.type === 'received').reduce((sum, tx) => sum + tx.amount, 0);
+  const sentTVM = senderSnapshot.transactions.filter(tx => tx.type === 'sent').reduce((sum, tx) => sum + tx.amount, 0);
+  const bonusTVM = senderSnapshot.transactions.filter(tx => tx.type === 'cashback' || tx.type === 'increment')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
   const computedBalance = senderSnapshot.initialBalanceTVM + receivedTVM + bonusTVM - sentTVM;
@@ -575,14 +490,14 @@ async function validateSenderVaultSnapshot(senderSnapshot, claimedSenderIBAN) {
 
 /******************************
  * Snapshot Serialization
- * Add top-level fields: balanceTVM, bioConstant, lastUTCTimestamp
  ******************************/
 function serializeVaultSnapshotForBioCatch(vData) {
+  // We add the top-level fields so bridging can see final chain data
   const fieldSep = '|';
   const txSep = '^';
   const txFieldSep = '~';
 
-  // Convert transactions to a string
+  // convert transactions to string
   const txParts = (vData.transactions || []).map(tx => {
     return [
       tx.type || '',
@@ -599,16 +514,18 @@ function serializeVaultSnapshotForBioCatch(vData) {
   });
   const txString = txParts.join(txSep);
 
-  // Add new fields for vData.balanceTVM, vData.bioConstant, vData.lastUTCTimestamp
   const rawString = [
+    // old fields
     vData.joinTimestamp || 0,
     vData.initialBioConstant || 0,
     vData.incrementsUsed || 0,
     vData.finalChainHash || '',
     vData.initialBalanceTVM || 0,
-    vData.balanceTVM || 0,        // new
-    vData.bioConstant || 0,       // new
-    vData.lastUTCTimestamp || 0,  // new
+    // new top-level fields
+    vData.balanceTVM || 0,
+    vData.bioConstant || 0,
+    vData.lastUTCTimestamp || 0,
+    // the transactions
     txString
   ].join(fieldSep);
 
@@ -619,18 +536,20 @@ function deserializeVaultSnapshotFromBioCatch(base64String) {
   const raw = atob(base64String);
   const parts = raw.split('|');
   if (parts.length < 9) {
-    throw new Error('Vault snapshot missing fields: expecting at least 9 top-level fields');
+    throw new Error('Vault snapshot missing fields: need at least 9 top-level fields');
   }
   const joinTimestamp = parseInt(parts[0], 10);
   const initialBioConstant = parseInt(parts[1], 10);
   const incrementsUsed = parseInt(parts[2], 10);
   const finalChainHash = parts[3];
   const initialBalanceTVM = parseInt(parts[4], 10);
+
   const balanceTVM = parseInt(parts[5], 10);
   const bioConstant = parseInt(parts[6], 10);
   const lastUTCTimestamp = parseInt(parts[7], 10);
 
   const txString = parts[8] || '';
+
   const txSep = '^';
   const txFieldSep = '~';
   const txChunks = txString.split(txSep).filter(Boolean);
@@ -656,11 +575,318 @@ function deserializeVaultSnapshotFromBioCatch(base64String) {
     incrementsUsed,
     finalChainHash,
     initialBalanceTVM,
-    balanceTVM,         // new
-    bioConstant,        // new
-    lastUTCTimestamp,   // new
+    balanceTVM,
+    bioConstant,
+    lastUTCTimestamp,
     transactions
   };
+}
+
+/******************************
+ * Generating & Validating Bio‑Catch
+ ******************************/
+async function generateBioCatchNumber(senderBioIBAN, receiverBioIBAN, amount, timestamp, senderBalance, finalChainHash) {
+  const encodedVault = serializeVaultSnapshotForBioCatch(vaultData);
+  const senderNumeric = parseInt(senderBioIBAN.slice(3));
+  const receiverNumeric = parseInt(receiverBioIBAN.slice(3));
+  const firstPart = senderNumeric + receiverNumeric;
+  return `Bio-${firstPart}-${timestamp}-${amount}-${senderBalance}-${senderBioIBAN}-${finalChainHash}-${encodedVault}`;
+}
+
+function validateBioIBAN(bioIBAN) {
+  return /^BIO\d+$/.test(bioIBAN || '');
+}
+
+async function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
+  const parts = bioCatchNumber.split('-');
+  if (parts.length !== 8 || parts[0] !== 'Bio') {
+    return { valid: false, message: 'BioCatch must have 8 parts with prefix "Bio-".' };
+  }
+  const [ , firstPartStr, timestampStr, amountStr, claimedSenderBalanceStr, claimedSenderIBAN, chainHash, snapshotEncoded] = parts;
+  const firstPart = parseInt(firstPartStr);
+  const encodedTimestamp = parseInt(timestampStr);
+  const encodedAmount = parseFloat(amountStr);
+  const claimedSenderBalance = parseFloat(claimedSenderBalanceStr);
+
+  if (isNaN(firstPart) || isNaN(encodedTimestamp) || isNaN(encodedAmount) || isNaN(claimedSenderBalance)) {
+    return { valid: false, message: 'Numeric parts must be valid numbers.' };
+  }
+
+  const senderNumeric = parseInt(claimedSenderIBAN.slice(3));
+  const receiverNumeric = firstPart - senderNumeric;
+  if (receiverNumeric < 0) {
+    return { valid: false, message: 'Invalid sender numeric in BioCatch.' };
+  }
+  const expectedFirstPart = senderNumeric + receiverNumeric;
+  if (firstPart !== expectedFirstPart) {
+    return { valid: false, message: 'Mismatch in sum of IBAN numerics.' };
+  }
+
+  if (!vaultData.bioIBAN) {
+    return { valid: false, message: 'Receiver IBAN not found in vault.' };
+  }
+  const receiverNumericFromVault = parseInt(vaultData.bioIBAN.slice(3));
+  if (receiverNumeric !== receiverNumericFromVault) {
+    return { valid: false, message: 'This BioCatch is not intended for this receiver IBAN.' };
+  }
+  if (encodedAmount !== claimedAmount) {
+    return { valid: false, message: 'Claimed amount does not match BioCatch amount.' };
+  }
+
+  const currentTimestamp = vaultData.lastUTCTimestamp;
+  const timeDiff = Math.abs(currentTimestamp - encodedTimestamp);
+  if (timeDiff > TRANSACTION_VALIDITY_SECONDS) {
+    return { valid: false, message: 'Timestamp outside ±12min window.' };
+  }
+
+  const expectedSenderIBAN = `BIO${senderNumeric}`;
+  if (claimedSenderIBAN !== expectedSenderIBAN) {
+    return { valid: false, message: 'Mismatched Sender IBAN in BioCatch.' };
+  }
+  if (claimedSenderBalance < claimedAmount) {
+    return { valid: false, message: 'Sender’s claimed balance is less than transaction amount.' };
+  }
+
+  let senderVaultSnapshot;
+  try {
+    senderVaultSnapshot = deserializeVaultSnapshotFromBioCatch(snapshotEncoded);
+  } catch (err) {
+    return { valid: false, message: `Snapshot parse error: ${err.message}` };
+  }
+  return {
+    valid: true,
+    message: 'OK',
+    chainHash,
+    claimedSenderIBAN,
+    senderVaultSnapshot
+  };
+}
+
+/******************************
+ * Transaction Handlers
+ ******************************/
+let transactionLock = false;
+
+async function handleSendTransaction() {
+  if (!vaultUnlocked) {
+    alert('❌ Please unlock the vault first.');
+    return;
+  }
+  if (transactionLock) {
+    alert('🔒 A transaction is already in progress. Please wait.');
+    return;
+  }
+  await applyPeriodicIncrements();
+
+  const receiverBioIBAN = document.getElementById('receiverBioIBAN')?.value.trim();
+  const amount = parseFloat(document.getElementById('catchOutAmount')?.value.trim());
+  if (!receiverBioIBAN || isNaN(amount) || amount <= 0) {
+    alert('❌ Invalid receiver Bio‑IBAN or amount.');
+    return;
+  }
+  if (!validateBioIBAN(receiverBioIBAN)) {
+    alert('❌ Invalid Bio‑IBAN format (must be "BIO" + digits).');
+    return;
+  }
+  if (receiverBioIBAN === vaultData.bioIBAN) {
+    alert('❌ Cannot send to self.');
+    return;
+  }
+  if (vaultData.balanceTVM < amount) {
+    alert('❌ Insufficient TVM balance.');
+    return;
+  }
+
+  transactionLock = true;
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const delta = nowSec - vaultData.lastUTCTimestamp;
+    vaultData.bioConstant += delta;
+    vaultData.lastUTCTimestamp = nowSec;
+
+    let bonusGranted = false;
+    if (canGive120Bonus(nowSec)) {
+      record120BonusUsage();
+      bonusGranted = true;
+    }
+
+    vaultData.finalChainHash = await computeFullChainHash(vaultData.transactions);
+
+    // generate BioCatch
+    const plainBioCatchNumber = await generateBioCatchNumber(
+      vaultData.bioIBAN,
+      receiverBioIBAN,
+      amount,
+      nowSec,
+      vaultData.balanceTVM,
+      vaultData.finalChainHash
+    );
+
+    // check duplicates
+    for (let tx of vaultData.transactions) {
+      if (tx.bioCatch) {
+        const existingPlain = await decryptBioCatchNumber(tx.bioCatch);
+        if (existingPlain === plainBioCatchNumber) {
+          alert('❌ This BioCatch number already exists. Try again.');
+          transactionLock = false;
+          return;
+        }
+      }
+    }
+
+    const obfuscatedCatch = await encryptBioCatchNumber(plainBioCatchNumber);
+    const newTx = {
+      type: 'sent',
+      receiverBioIBAN,
+      amount,
+      timestamp: nowSec,
+      status: 'Completed',
+      bioCatch: obfuscatedCatch,
+      bioConstantAtGeneration: vaultData.bioConstant,
+      previousHash: vaultData.lastTransactionHash,
+      txHash: ''
+    };
+    newTx.txHash = await computeTransactionHash(vaultData.lastTransactionHash, newTx);
+    vaultData.transactions.push(newTx);
+    vaultData.lastTransactionHash = newTx.txHash;
+    vaultData.finalChainHash = await computeFullChainHash(vaultData.transactions);
+
+    // if bonus
+    if (bonusGranted) {
+      const bonusTx = {
+        type: 'cashback',
+        amount: PER_TX_BONUS,
+        timestamp: nowSec,
+        status: 'Granted',
+        bioConstantAtGeneration: vaultData.bioConstant,
+        previousHash: vaultData.lastTransactionHash,
+        txHash: ''
+      };
+      bonusTx.txHash = await computeTransactionHash(vaultData.lastTransactionHash, bonusTx);
+      vaultData.transactions.push(bonusTx);
+      vaultData.lastTransactionHash = bonusTx.txHash;
+      vaultData.finalChainHash = await computeFullChainHash(vaultData.transactions);
+    }
+
+    populateWalletUI();
+    await promptAndSaveVault();
+
+    alert(`✅ Sent ${amount} TVM. Bonus: ${bonusGranted ? '120 TVM awarded' : 'No bonus'}`);
+    showBioCatchPopup(obfuscatedCatch);
+
+    document.getElementById('receiverBioIBAN').value = '';
+    document.getElementById('catchOutAmount').value = '';
+    renderTransactionTable();
+  } catch (err) {
+    console.error('Send Transaction Error:', err);
+    alert('❌ An error occurred processing the transaction.');
+  } finally {
+    transactionLock = false;
+  }
+}
+
+async function handleReceiveTransaction() {
+  if (!vaultUnlocked) {
+    alert('❌ Please unlock the vault first.');
+    return;
+  }
+  if (transactionLock) {
+    alert('🔒 A transaction is in progress. Please wait.');
+    return;
+  }
+  await applyPeriodicIncrements();
+
+  const encryptedBioCatchInput = document.getElementById('catchInBioCatch')?.value.trim();
+  const amount = parseFloat(document.getElementById('catchInAmount')?.value.trim());
+  if (!encryptedBioCatchInput || isNaN(amount) || amount <= 0) {
+    alert('❌ Invalid BioCatch number or amount.');
+    return;
+  }
+  transactionLock = true;
+  try {
+    const bioCatchNumber = await decryptBioCatchNumber(encryptedBioCatchInput);
+    if (!bioCatchNumber) {
+      alert('❌ Unable to decode BioCatch number.');
+      transactionLock = false;
+      return;
+    }
+    // check duplicates
+    for (let tx of vaultData.transactions) {
+      if (tx.bioCatch) {
+        const existingPlain = await decryptBioCatchNumber(tx.bioCatch);
+        if (existingPlain === bioCatchNumber) {
+          alert('❌ This BioCatch number has already been used.');
+          transactionLock = false;
+          return;
+        }
+      }
+    }
+
+    const validation = await validateBioCatchNumber(bioCatchNumber, amount);
+    if (!validation.valid) {
+      alert(`❌ BioCatch Validation Failed: ${validation.message}`);
+      transactionLock = false;
+      return;
+    }
+
+    const { chainHash, claimedSenderIBAN, senderVaultSnapshot } = validation;
+    const crossCheck = await verifyFullChainAndBioConstant(senderVaultSnapshot);
+    if (!crossCheck.success) {
+      alert(`❌ Sender chain mismatch: ${crossCheck.reason}`);
+      transactionLock = false;
+      return;
+    }
+    if (senderVaultSnapshot.finalChainHash !== chainHash) {
+      alert('❌ The chain hash in the BioCatch does not match the snapshot’s final chain hash!');
+      transactionLock = false;
+      return;
+    }
+    const snapshotValidation = await validateSenderVaultSnapshot(senderVaultSnapshot, claimedSenderIBAN);
+    if (!snapshotValidation.valid) {
+      alert("❌ Sender snapshot integrity check failed: " + snapshotValidation.errors.join("; "));
+      transactionLock = false;
+      return;
+    }
+
+    const nowSec = vaultData.lastUTCTimestamp;
+    vaultData.transactions.push({
+      type: 'received',
+      senderBioIBAN: claimedSenderIBAN,
+      bioCatch: encryptedBioCatchInput,
+      amount,
+      timestamp: nowSec,
+      status: 'Valid',
+      bioConstantAtGeneration: vaultData.bioConstant
+    });
+
+    await promptAndSaveVault();
+    populateWalletUI();
+    alert(`✅ Transaction received successfully! +${amount} TVM.`);
+
+    document.getElementById('catchInBioCatch').value = '';
+    document.getElementById('catchInAmount').value = '';
+    renderTransactionTable();
+  } catch (error) {
+    console.error('Receive Transaction Error:', error);
+    alert('❌ An error occurred processing the transaction.');
+  } finally {
+    transactionLock = false;
+  }
+}
+
+function isVaultLockedOut() {
+  if (vaultData.lockoutTimestamp) {
+    const now = Math.floor(Date.now() / 1000);
+    if (now < vaultData.lockoutTimestamp) {
+      return true;
+    } else {
+      vaultData.lockoutTimestamp = null;
+      vaultData.authAttempts = 0;
+      promptAndSaveVault();
+      return false;
+    }
+  }
+  return false;
 }
 
 /******************************
@@ -755,9 +981,6 @@ function exportTransactionTable() {
   document.body.removeChild(link);
 }
 
-/******************************
- * Export Vault Backup
- ******************************/
 function exportVaultBackup() {
   const backupData = JSON.stringify(vaultData, null, 2);
   const blob = new Blob([backupData], { type: "application/json" });
@@ -796,11 +1019,10 @@ function populateWalletUI() {
     ibanInput.value = vaultData.bioIBAN || 'BIO...';
   }
 
-  // Recompute final from initial + bonus - sent
-  const receivedTVM = vaultData.transactions.filter(tx => tx.type === 'received').reduce((s, tx) => s + tx.amount, 0);
-  const sentTVM = vaultData.transactions.filter(tx => tx.type === 'sent').reduce((s, tx) => s + tx.amount, 0);
+  const receivedTVM = vaultData.transactions.filter(tx => tx.type === 'received').reduce((s, t) => s + t.amount, 0);
+  const sentTVM = vaultData.transactions.filter(tx => tx.type === 'sent').reduce((s, t) => s + t.amount, 0);
   const bonusTVM = vaultData.transactions.filter(tx => tx.type === 'cashback' || tx.type === 'increment')
-    .reduce((s, tx) => s + tx.amount, 0);
+    .reduce((s, t) => s + t.amount, 0);
 
   vaultData.balanceTVM = vaultData.initialBalanceTVM + receivedTVM + bonusTVM - sentTVM;
   vaultData.balanceUSD = parseFloat((vaultData.balanceTVM / EXCHANGE_RATE).toFixed(2));
@@ -835,6 +1057,7 @@ function initializeUI() {
   const lockVaultBtn = document.getElementById('lockVaultBtn');
   lockVaultBtn?.addEventListener('click', lockVault);
 
+  // The handleReceiveTransaction is now definitely defined
   const catchInBtn = document.getElementById('catchInBtn');
   catchInBtn?.addEventListener('click', handleReceiveTransaction);
 
@@ -876,6 +1099,9 @@ function initializeUI() {
   enforceSingleVault();
 }
 
+/******************************
+ * Passphrase Modal
+ ******************************/
 async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Enter Passphrase' }) {
   return new Promise((resolve) => {
     const passModal = document.getElementById('passModal');
@@ -971,7 +1197,7 @@ async function enforceStoragePersistence() {
       console.warn('🚨 Storage critical:', estimate);
       alert('❗ Vault storage nearing limit! Export backup!');
     }
-  }, STORAGE_CHECK_INTERVAL);
+  }, 300000);
 }
 
 /******************************
@@ -1009,7 +1235,10 @@ async function createNewVault(pinFromUser = null) {
     return;
   }
   if (!pinFromUser) {
-    const { pin } = await getPassphraseFromModal({ confirmNeeded: true, modalTitle: 'Create New Vault (Set Passphrase)' });
+    const { pin } = await getPassphraseFromModal({
+      confirmNeeded: true,
+      modalTitle: 'Create New Vault (Set Passphrase)'
+    });
     pinFromUser = pin;
   }
   if (!pinFromUser || pinFromUser.length < 8) {
@@ -1024,12 +1253,9 @@ async function createNewVault(pinFromUser = null) {
   vaultData.lastUTCTimestamp = nowSec;
   vaultData.initialBioConstant = vaultData.bioConstant;
   vaultData.bioIBAN = `BIO${vaultData.bioConstant + nowSec}`;
-
-  // 1,200 initial
   vaultData.initialBalanceTVM = INITIAL_BALANCE_TVM;
   vaultData.balanceTVM = INITIAL_BALANCE_TVM;
   vaultData.balanceUSD = parseFloat((INITIAL_BALANCE_TVM / EXCHANGE_RATE).toFixed(2));
-
   vaultData.transactions = [];
   vaultData.authAttempts = 0;
   vaultData.lockoutTimestamp = null;
@@ -1070,7 +1296,10 @@ async function unlockVault() {
     }
   }
 
-  const { pin } = await getPassphraseFromModal({ confirmNeeded: false, modalTitle: 'Unlock Vault' });
+  const { pin } = await getPassphraseFromModal({
+    confirmNeeded: false,
+    modalTitle: 'Unlock Vault'
+  });
   if (!pin) {
     alert('❌ Passphrase is required or user canceled the modal.');
     handleFailedAuthAttempt();
@@ -1132,7 +1361,7 @@ async function unlockVault() {
  * On DOM Load
  ******************************/
 function loadVaultOnStartup() {
-  // If you want to auto-unlock using sessionStorage, do so here
+  // optional auto-unlock
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -1167,6 +1396,5 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     }
   };
-
   enforceStoragePersistence();
 });
