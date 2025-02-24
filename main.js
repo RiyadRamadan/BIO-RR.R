@@ -1,12 +1,3 @@
-/***********************************************************************
- * main.js — Production‑Ready "Balance, Bonus & Validation" Code
- *
- * Modifications:
- * 1. New vault creation requires a passphrase confirmation (confirm password)
- *    in the passphrase modal.
- * 2. Removed periodic increment logic and associated constants.
- ***********************************************************************/
-
 /******************************
  * Constants & Global Variables
  ******************************/
@@ -14,14 +5,14 @@ const DB_NAME = 'BioVaultDB';
 const DB_VERSION = 1;
 const VAULT_STORE = 'vault';
 
-// Balance & bonus settings
+// Balance & Bonus Settings
 const INITIAL_BALANCE_TVM = 1200;
-const PER_TX_BONUS = 120; 
-const MAX_BONUSES_PER_DAY = 3; 
-const MAX_BONUSES_PER_MONTH = 30; 
-const MAX_ANNUAL_BONUS_TVM = 10800; // total annual bonus TVM
+const PER_TX_BONUS = 120;           // Bonus per qualifying transaction
+const MAX_BONUSES_PER_DAY = 3;      // 3 bonuses per day = 360 TVM/day
+const MAX_BONUSES_PER_MONTH = 30;   // 30 bonuses per month = 3,600 TVM/month
+const MAX_ANNUAL_BONUS_TVM = 10800; // Maximum bonus per year
 
-const EXCHANGE_RATE = 12;  // 1 USD = 12 TVM
+const EXCHANGE_RATE = 12;         // 1 USD = 12 TVM
 const INITIAL_BIO_CONSTANT = 1736565605;
 const TRANSACTION_VALIDITY_SECONDS = 720; // ±12 minutes
 const LOCKOUT_DURATION_SECONDS = 3600;    // 1 hour
@@ -30,16 +21,7 @@ const MAX_AUTH_ATTEMPTS = 3;
 const VAULT_BACKUP_KEY = 'vaultArmoredBackup';
 const STORAGE_CHECK_INTERVAL = 300000;   // 5 minutes
 
-const vaultSyncChannel = new BroadcastChannel('vault-sync');
-
-let vaultUnlocked = false;
-let derivedKey = null;
-let bioLineIntervalTimer = null;
-
-/**
- * Master vaultData structure.
- * Note: The periodic increment properties have been removed.
- */
+// Offline bonus limits renew annually.
 let vaultData = {
   bioIBAN: null,
   initialBalanceTVM: INITIAL_BALANCE_TVM,
@@ -55,25 +37,28 @@ let vaultData = {
   initialBioConstant: INITIAL_BIO_CONSTANT,
   joinTimestamp: 0,
 
-  // Removed incrementsUsed property
-
   lastTransactionHash: '',
   credentialId: null,
   finalChainHash: '',
 
-  // Daily bonus usage
+  // Bonus usage tracking
   dailyCashback: {
     date: '',
     usedCount: 0
   },
-  // Monthly bonus usage
   monthlyUsage: {
     yearMonth: '',
     usedCount: 0
   },
-  // Annual bonus usage
-  annualBonusUsed: 0
+  annualBonusUsed: 0,
+  annualUsageYear: null // to track the year for bonus renewal
 };
+
+let vaultUnlocked = false;
+let derivedKey = null;
+let bioLineIntervalTimer = null;
+
+const vaultSyncChannel = new BroadcastChannel('vault-sync');
 
 /******************************
  * Utility / Formatting
@@ -318,7 +303,7 @@ async function loadVaultDataFromDB() {
 }
 
 /******************************
- * Bonus Logic (Daily, Monthly, Yearly)
+ * Bonus Logic (Daily, Monthly, Annual)
  ******************************/
 function resetDailyUsageIfNeeded(nowSec) {
   const currentDateStr = new Date(nowSec * 1000).toISOString().slice(0, 10);
@@ -340,9 +325,18 @@ function resetMonthlyUsageIfNeeded(nowSec) {
   }
 }
 
+function resetAnnualUsageIfNeeded(nowSec) {
+  const currentYear = new Date(nowSec * 1000).getUTCFullYear();
+  if (vaultData.annualUsageYear !== currentYear) {
+    vaultData.annualUsageYear = currentYear;
+    vaultData.annualBonusUsed = 0;
+  }
+}
+
 function canGive120Bonus(nowSec) {
   resetDailyUsageIfNeeded(nowSec);
   resetMonthlyUsageIfNeeded(nowSec);
+  resetAnnualUsageIfNeeded(nowSec);
 
   if (vaultData.dailyCashback.usedCount >= MAX_BONUSES_PER_DAY) return false;
   if (vaultData.monthlyUsage.usedCount >= MAX_BONUSES_PER_MONTH) return false;
@@ -515,7 +509,7 @@ function serializeVaultSnapshotForBioCatch(vData) {
     ].join(txFieldSep);
   });
   const txString = txParts.join(txSep);
-  // Snapshot now includes 8 top‑level fields (increments removed)
+  // Snapshot includes the key top‑level fields.
   const rawString = [
     vData.joinTimestamp || 0,
     vData.initialBioConstant || 0,
@@ -664,7 +658,6 @@ async function handleSendTransaction() {
     alert('🔒 A transaction is already in progress. Please wait.');
     return;
   }
-  // Removed periodic increment call.
   const receiverBioIBAN = document.getElementById('receiverBioIBAN')?.value.trim();
   const amount = parseFloat(document.getElementById('catchOutAmount')?.value.trim());
   if (!receiverBioIBAN || isNaN(amount) || amount <= 0) {
@@ -692,7 +685,8 @@ async function handleSendTransaction() {
     vaultData.lastUTCTimestamp = nowSec;
 
     let bonusGranted = false;
-    if (canGive120Bonus(nowSec)) {
+    // Only award bonus if the transaction exceeds 240 TVM.
+    if (amount > 240 && canGive120Bonus(nowSec)) {
       record120BonusUsage();
       bonusGranted = true;
     }
@@ -779,7 +773,6 @@ async function handleReceiveTransaction() {
     alert('🔒 A transaction is in progress. Please wait.');
     return;
   }
-  // Removed periodic increment call.
   const encryptedBioCatchInput = document.getElementById('catchInBioCatch')?.value.trim();
   const amount = parseFloat(document.getElementById('catchInAmount')?.value.trim());
   if (!encryptedBioCatchInput || isNaN(amount) || amount <= 0) {
@@ -814,9 +807,9 @@ async function handleReceiveTransaction() {
     }
 
     const { chainHash, claimedSenderIBAN, senderVaultSnapshot } = validation;
-    const crossCheck = await validateSenderVaultSnapshot(senderVaultSnapshot, claimedSenderIBAN);
-    if (!crossCheck.valid) {
-      alert("❌ Sender snapshot integrity check failed: " + crossCheck.errors.join("; "));
+    const snapshotValidation = await validateSenderVaultSnapshot(senderVaultSnapshot, claimedSenderIBAN);
+    if (!snapshotValidation.valid) {
+      alert("❌ Sender snapshot integrity check failed: " + snapshotValidation.errors.join("; "));
       transactionLock = false;
       return;
     }
@@ -886,7 +879,6 @@ function renderTransactionTable() {
       } else if (tx.type === 'cashback') {
         bioIBANCell = 'System/Bonus';
       }
-      // Removed 'increment' case
 
       let styleCell = '';
       if (tx.type === 'sent') {
@@ -1050,7 +1042,7 @@ async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Ent
     passTitle.textContent = modalTitle;
     passInput.value = '';
     passConfirmInput.value = '';
-    // Show confirm field only when creating a new vault.
+    // Show confirmation only when creating a new vault.
     passConfirmLabel.style.display = confirmNeeded ? 'block' : 'none';
     passConfirmInput.style.display = confirmNeeded ? 'block' : 'none';
 
@@ -1094,7 +1086,7 @@ async function createNewVault(pinFromUser = null) {
     alert('❌ A vault already exists on this device. Please unlock it instead.');
     return;
   }
-  // When creating a new vault, require confirmation.
+  // When creating a new vault, require passphrase confirmation.
   if (!pinFromUser) {
     const { pin } = await getPassphraseFromModal({ confirmNeeded: true, modalTitle: 'Create New Vault (Set Passphrase)' });
     pinFromUser = pin;
@@ -1117,7 +1109,6 @@ async function createNewVault(pinFromUser = null) {
   vaultData.transactions = [];
   vaultData.authAttempts = 0;
   vaultData.lockoutTimestamp = null;
-  // Removed incrementsUsed initialization.
   vaultData.lastTransactionHash = '';
   vaultData.finalChainHash = '';
 
@@ -1263,7 +1254,7 @@ async function enforceStoragePersistence() {
  * On DOM Load & UI Initialization
  ******************************/
 function loadVaultOnStartup() {
-  // Optional auto-unlock logic can be placed here if desired.
+  // Optional auto‑unlock logic can be placed here if desired.
 }
 
 window.addEventListener('DOMContentLoaded', () => {
