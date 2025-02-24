@@ -1,3 +1,19 @@
+/***********************************************************************
+ * main.js — Production‑Ready Offline Balance Chain Code (Revised)
+ *
+ * DESIGN OVERVIEW:
+ * 1. Genesis Balance: Every vault starts with an immutable 1,200 TVM.
+ * 2. Bonus Generation: Qualifying transactions (amount > 240 TVM)
+ *    trigger a bonus of 120 TVM, subject to daily (max 360 TVM), monthly 
+ *    (max 3,600 TVM) and annual (max 10,800 TVM) limits.
+ * 3. Bonus Chain: All transactions (including bonuses) are cryptographically
+ *    chained.
+ * 4. Vault Creation: When no vault exists, a new vault is created using a 
+ *    passphrase modal that requires confirmation.
+ * 5. Bio‑IBAN: Computed once at vault creation as:
+ *       "BIO" + (initialBioConstant + joinTimestamp)
+ *    This value is fixed and used consistently in all transactions.
+ ***********************************************************************/
 
 /******************************
  * Constants & Global Variables
@@ -24,14 +40,14 @@ const STORAGE_CHECK_INTERVAL = 300000;   // 5 minutes
 
 // Vault data – note that the IBAN is computed only once at creation.
 let vaultData = {
-  bioIBAN: null, // Will be set at vault creation as: "BIO" + (initialBioConstant + joinTimestamp)
+  bioIBAN: null, // Set at vault creation as "BIO" + (initialBioConstant + joinTimestamp)
   initialBalanceTVM: INITIAL_BALANCE_TVM,
   balanceTVM: 0,
   balanceUSD: 0,
 
-  // For bonus chain computations, we use the immutable initialBioConstant.
+  // Immutable values for IBAN computation.
   initialBioConstant: INITIAL_BIO_CONSTANT,
-  // bioConstant may update for a "bio‑line" display but is not used for IBAN.
+  // bioConstant is updated for display, but not for IBAN.
   bioConstant: INITIAL_BIO_CONSTANT,
   lastUTCTimestamp: 0,
   transactions: [],
@@ -479,7 +495,7 @@ async function validateSenderVaultSnapshot(senderSnapshot, claimedSenderIBAN) {
     errors.push(`Balance mismatch: computed ${computedBalance} vs stored ${senderSnapshot.balanceTVM}`);
   }
 
-  // Compute expected IBAN using immutable initialBioConstant and joinTimestamp.
+  // Expected sender IBAN is fixed from vault creation.
   const computedSenderIBAN = `BIO${senderSnapshot.initialBioConstant + senderSnapshot.joinTimestamp}`;
   if (claimedSenderIBAN !== computedSenderIBAN) {
     errors.push(`Sender Bio‑IBAN mismatch: computed ${computedSenderIBAN} vs claimed ${claimedSenderIBAN}`);
@@ -507,7 +523,6 @@ function serializeVaultSnapshotForBioCatch(vData) {
     ].join(txFieldSep);
   });
   const txString = txParts.join(txSep);
-  // Snapshot includes fixed fields; note that the IBAN is computed once.
   const rawString = [
     vData.joinTimestamp || 0,
     vData.initialBioConstant || 0,
@@ -679,7 +694,7 @@ async function handleSendTransaction() {
   try {
     const nowSec = Math.floor(Date.now() / 1000);
     const delta = nowSec - vaultData.lastUTCTimestamp;
-    // Update bioConstant for display purposes only.
+    // Update bioConstant for display; do not change vaultData.bioIBAN.
     vaultData.bioConstant += delta;
     vaultData.lastUTCTimestamp = nowSec;
 
@@ -731,6 +746,7 @@ async function handleSendTransaction() {
     vaultData.finalChainHash = await computeFullChainHash(vaultData.transactions);
 
     if (bonusGranted) {
+      // For bonus transactions, explicitly set senderBioIBAN to the fixed vault Bio‑IBAN.
       const bonusTx = {
         type: 'cashback',
         amount: PER_TX_BONUS,
@@ -738,7 +754,8 @@ async function handleSendTransaction() {
         status: 'Granted',
         bioConstantAtGeneration: vaultData.bioConstant,
         previousHash: vaultData.lastTransactionHash,
-        txHash: ''
+        txHash: '',
+        senderBioIBAN: vaultData.bioIBAN // <-- FIX: explicitly set sender IBAN for bonus
       };
       bonusTx.txHash = await computeTransactionHash(vaultData.lastTransactionHash, bonusTx);
       vaultData.transactions.push(bonusTx);
@@ -962,7 +979,7 @@ function initializeBioConstantAndUTCTime() {
   if (bioLineIntervalTimer) clearInterval(bioLineIntervalTimer);
   const currentTimestamp = Math.floor(Date.now() / 1000);
   const elapsed = currentTimestamp - vaultData.lastUTCTimestamp;
-  // Update bioConstant for dynamic display; note that this does not affect the fixed IBAN.
+  // Update bioConstant for display only.
   vaultData.bioConstant += elapsed;
   vaultData.lastUTCTimestamp = currentTimestamp;
   populateWalletUI();
@@ -1029,7 +1046,7 @@ function showBioCatchPopup(obfuscatedCatch) {
 /******************************
  * Passphrase Modal & Vault Creation / Unlock
  ******************************/
-// Modified: When creating a new vault, the modal requires confirmation.
+// When creating a new vault, the modal requires confirmation.
 async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Enter Passphrase' }) {
   return new Promise((resolve) => {
     const passModal = document.getElementById('passModal');
@@ -1080,13 +1097,11 @@ async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Ent
   });
 }
 
-// New flow: Check for vault existence before prompting for passphrase.
-// If no vault exists, call createNewVault (which uses confirmNeeded: true).
+// Check for vault existence before prompting.
 async function checkAndUnlockVault() {
   const stored = await loadVaultDataFromDB();
   if (!stored) {
     if (!confirm('⚠️ No vault found. Create a new vault?')) return;
-    // Use the creation flow that requires confirmation.
     const { pin } = await getPassphraseFromModal({ confirmNeeded: true, modalTitle: 'Create New Vault (Set Passphrase)' });
     await createNewVault(pin);
   } else {
@@ -1095,7 +1110,6 @@ async function checkAndUnlockVault() {
 }
 
 async function createNewVault(pinFromUser = null) {
-  // No vault should exist at this point.
   if (!pinFromUser) {
     const result = await getPassphraseFromModal({ confirmNeeded: true, modalTitle: 'Create New Vault (Set Passphrase)' });
     pinFromUser = result.pin;
@@ -1110,7 +1124,7 @@ async function createNewVault(pinFromUser = null) {
   const nowSec = Math.floor(Date.now() / 1000);
   vaultData.joinTimestamp = nowSec;
   vaultData.lastUTCTimestamp = nowSec;
-  // Set the immutable IBAN using initialBioConstant and joinTimestamp.
+  // Compute and fix the Bio‑IBAN at creation time.
   vaultData.bioIBAN = `BIO${vaultData.initialBioConstant + nowSec}`;
   vaultData.initialBalanceTVM = INITIAL_BALANCE_TVM;
   vaultData.balanceTVM = INITIAL_BALANCE_TVM;
@@ -1304,7 +1318,7 @@ window.addEventListener('DOMContentLoaded', () => {
 function initializeUI() {
   const enterVaultBtn = document.getElementById('enterVaultBtn');
   if (enterVaultBtn) {
-    // Use the new function that checks for vault existence.
+    // Use checkAndUnlockVault which first checks for vault existence.
     enterVaultBtn.addEventListener('click', checkAndUnlockVault);
     console.log("✅ Event listener attached to enterVaultBtn!");
   } else {
