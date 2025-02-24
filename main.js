@@ -1,3 +1,4 @@
+
 /******************************
  * Constants & Global Variables
  ******************************/
@@ -21,20 +22,22 @@ const MAX_AUTH_ATTEMPTS = 3;
 const VAULT_BACKUP_KEY = 'vaultArmoredBackup';
 const STORAGE_CHECK_INTERVAL = 300000;   // 5 minutes
 
-// Offline bonus limits renew annually.
+// Vault data – note that the IBAN is computed only once at creation.
 let vaultData = {
-  bioIBAN: null,
+  bioIBAN: null, // Will be set at vault creation as: "BIO" + (initialBioConstant + joinTimestamp)
   initialBalanceTVM: INITIAL_BALANCE_TVM,
   balanceTVM: 0,
   balanceUSD: 0,
 
+  // For bonus chain computations, we use the immutable initialBioConstant.
+  initialBioConstant: INITIAL_BIO_CONSTANT,
+  // bioConstant may update for a "bio‑line" display but is not used for IBAN.
   bioConstant: INITIAL_BIO_CONSTANT,
   lastUTCTimestamp: 0,
   transactions: [],
 
   authAttempts: 0,
   lockoutTimestamp: null,
-  initialBioConstant: INITIAL_BIO_CONSTANT,
   joinTimestamp: 0,
 
   lastTransactionHash: '',
@@ -51,7 +54,7 @@ let vaultData = {
     usedCount: 0
   },
   annualBonusUsed: 0,
-  annualUsageYear: null // to track the year for bonus renewal
+  annualUsageYear: null
 };
 
 let vaultUnlocked = false;
@@ -476,13 +479,8 @@ async function validateSenderVaultSnapshot(senderSnapshot, claimedSenderIBAN) {
     errors.push(`Balance mismatch: computed ${computedBalance} vs stored ${senderSnapshot.balanceTVM}`);
   }
 
-  const expectedBioConstant = senderSnapshot.initialBioConstant
-    + (senderSnapshot.lastUTCTimestamp - senderSnapshot.joinTimestamp);
-  if (expectedBioConstant !== senderSnapshot.bioConstant) {
-    errors.push(`BioConstant mismatch: expected ${expectedBioConstant} vs stored ${senderSnapshot.bioConstant}`);
-  }
-
-  const computedSenderIBAN = `BIO${senderSnapshot.bioConstant + senderSnapshot.joinTimestamp}`;
+  // Compute expected IBAN using immutable initialBioConstant and joinTimestamp.
+  const computedSenderIBAN = `BIO${senderSnapshot.initialBioConstant + senderSnapshot.joinTimestamp}`;
   if (claimedSenderIBAN !== computedSenderIBAN) {
     errors.push(`Sender Bio‑IBAN mismatch: computed ${computedSenderIBAN} vs claimed ${claimedSenderIBAN}`);
   }
@@ -509,7 +507,7 @@ function serializeVaultSnapshotForBioCatch(vData) {
     ].join(txFieldSep);
   });
   const txString = txParts.join(txSep);
-  // Snapshot includes the key top‑level fields.
+  // Snapshot includes fixed fields; note that the IBAN is computed once.
   const rawString = [
     vData.joinTimestamp || 0,
     vData.initialBioConstant || 0,
@@ -621,7 +619,7 @@ async function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
     return { valid: false, message: 'Timestamp outside ±12min window.' };
   }
 
-  const expectedSenderIBAN = `BIO${senderNumeric}`;
+  const expectedSenderIBAN = `BIO${vaultData.initialBioConstant + vaultData.joinTimestamp}`;
   if (claimedSenderIBAN !== expectedSenderIBAN) {
     return { valid: false, message: 'Mismatched Sender IBAN in BioCatch.' };
   }
@@ -681,11 +679,12 @@ async function handleSendTransaction() {
   try {
     const nowSec = Math.floor(Date.now() / 1000);
     const delta = nowSec - vaultData.lastUTCTimestamp;
+    // Update bioConstant for display purposes only.
     vaultData.bioConstant += delta;
     vaultData.lastUTCTimestamp = nowSec;
 
     let bonusGranted = false;
-    // Only award bonus if the transaction exceeds 240 TVM.
+    // Award bonus if transaction exceeds 240 TVM and bonus limits allow.
     if (amount > 240 && canGive120Bonus(nowSec)) {
       record120BonusUsage();
       bonusGranted = true;
@@ -963,6 +962,7 @@ function initializeBioConstantAndUTCTime() {
   if (bioLineIntervalTimer) clearInterval(bioLineIntervalTimer);
   const currentTimestamp = Math.floor(Date.now() / 1000);
   const elapsed = currentTimestamp - vaultData.lastUTCTimestamp;
+  // Update bioConstant for dynamic display; note that this does not affect the fixed IBAN.
   vaultData.bioConstant += elapsed;
   vaultData.lastUTCTimestamp = currentTimestamp;
   populateWalletUI();
@@ -1029,6 +1029,7 @@ function showBioCatchPopup(obfuscatedCatch) {
 /******************************
  * Passphrase Modal & Vault Creation / Unlock
  ******************************/
+// Modified: When creating a new vault, the modal requires confirmation.
 async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Enter Passphrase' }) {
   return new Promise((resolve) => {
     const passModal = document.getElementById('passModal');
@@ -1042,7 +1043,6 @@ async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Ent
     passTitle.textContent = modalTitle;
     passInput.value = '';
     passConfirmInput.value = '';
-    // Show confirmation only when creating a new vault.
     passConfirmLabel.style.display = confirmNeeded ? 'block' : 'none';
     passConfirmInput.style.display = confirmNeeded ? 'block' : 'none';
 
@@ -1080,16 +1080,25 @@ async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Ent
   });
 }
 
-async function createNewVault(pinFromUser = null) {
+// New flow: Check for vault existence before prompting for passphrase.
+// If no vault exists, call createNewVault (which uses confirmNeeded: true).
+async function checkAndUnlockVault() {
   const stored = await loadVaultDataFromDB();
-  if (stored) {
-    alert('❌ A vault already exists on this device. Please unlock it instead.');
-    return;
-  }
-  // When creating a new vault, require passphrase confirmation.
-  if (!pinFromUser) {
+  if (!stored) {
+    if (!confirm('⚠️ No vault found. Create a new vault?')) return;
+    // Use the creation flow that requires confirmation.
     const { pin } = await getPassphraseFromModal({ confirmNeeded: true, modalTitle: 'Create New Vault (Set Passphrase)' });
-    pinFromUser = pin;
+    await createNewVault(pin);
+  } else {
+    await unlockVault();
+  }
+}
+
+async function createNewVault(pinFromUser = null) {
+  // No vault should exist at this point.
+  if (!pinFromUser) {
+    const result = await getPassphraseFromModal({ confirmNeeded: true, modalTitle: 'Create New Vault (Set Passphrase)' });
+    pinFromUser = result.pin;
   }
   if (!pinFromUser || pinFromUser.length < 8) {
     alert('⚠️ Passphrase must be >= 8 characters.');
@@ -1101,8 +1110,8 @@ async function createNewVault(pinFromUser = null) {
   const nowSec = Math.floor(Date.now() / 1000);
   vaultData.joinTimestamp = nowSec;
   vaultData.lastUTCTimestamp = nowSec;
-  vaultData.initialBioConstant = vaultData.bioConstant;
-  vaultData.bioIBAN = `BIO${vaultData.bioConstant + nowSec}`;
+  // Set the immutable IBAN using initialBioConstant and joinTimestamp.
+  vaultData.bioIBAN = `BIO${vaultData.initialBioConstant + nowSec}`;
   vaultData.initialBalanceTVM = INITIAL_BALANCE_TVM;
   vaultData.balanceTVM = INITIAL_BALANCE_TVM;
   vaultData.balanceUSD = parseFloat((INITIAL_BALANCE_TVM / EXCHANGE_RATE).toFixed(2));
@@ -1295,7 +1304,8 @@ window.addEventListener('DOMContentLoaded', () => {
 function initializeUI() {
   const enterVaultBtn = document.getElementById('enterVaultBtn');
   if (enterVaultBtn) {
-    enterVaultBtn.addEventListener('click', unlockVault);
+    // Use the new function that checks for vault existence.
+    enterVaultBtn.addEventListener('click', checkAndUnlockVault);
     console.log("✅ Event listener attached to enterVaultBtn!");
   } else {
     console.error("❌ enterVaultBtn NOT FOUND in DOM!");
