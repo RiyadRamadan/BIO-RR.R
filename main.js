@@ -1,5 +1,3 @@
-
-
 /******************************
  * Constants & Global Variables
  ******************************/
@@ -23,18 +21,16 @@ const MAX_AUTH_ATTEMPTS = 3;
 const VAULT_BACKUP_KEY = 'vaultArmoredBackup';
 const STORAGE_CHECK_INTERVAL = 300000;   // 5 minutes
 
-// Vault data – the owner's Bio‑IBAN is computed once at vault creation.
-// Additionally, we store bonusIBAN which will be used for bonus transactions.
+// Vault data – note: the Bio‑IBAN is computed once at creation.
 let vaultData = {
-  bioIBAN: null,       // "BIO" + (initialBioConstant + joinTimestamp)
-  bonusIBAN: null,     // Set equal to bioIBAN at creation.
+  bioIBAN: null, // Set at vault creation as: "BIO" + (initialBioConstant + joinTimestamp)
   initialBalanceTVM: INITIAL_BALANCE_TVM,
   balanceTVM: 0,
   balanceUSD: 0,
 
   // Immutable values for IBAN computation.
   initialBioConstant: INITIAL_BIO_CONSTANT,
-  // bioConstant is updated for display purposes.
+  // bioConstant is updated for display but not used in IBAN calculations.
   bioConstant: INITIAL_BIO_CONSTANT,
   lastUTCTimestamp: 0,
   transactions: [],
@@ -48,8 +44,14 @@ let vaultData = {
   finalChainHash: '',
 
   // Bonus usage tracking
-  dailyCashback: { date: '', usedCount: 0 },
-  monthlyUsage: { yearMonth: '', usedCount: 0 },
+  dailyCashback: {
+    date: '',
+    usedCount: 0
+  },
+  monthlyUsage: {
+    yearMonth: '',
+    usedCount: 0
+  },
   annualBonusUsed: 0,
   annualUsageYear: null
 };
@@ -476,7 +478,7 @@ async function validateSenderVaultSnapshot(senderSnapshot, claimedSenderIBAN) {
     errors.push(`Balance mismatch: computed ${computedBalance} vs stored ${senderSnapshot.balanceTVM}`);
   }
 
-  // Expected sender IBAN is fixed from vault creation.
+  // Expected sender IBAN is computed from the snapshot's immutable values.
   const computedSenderIBAN = `BIO${senderSnapshot.initialBioConstant + senderSnapshot.joinTimestamp}`;
   if (claimedSenderIBAN !== computedSenderIBAN) {
     errors.push(`Sender Bio‑IBAN mismatch: computed ${computedSenderIBAN} vs claimed ${claimedSenderIBAN}`);
@@ -615,14 +617,8 @@ async function validateBioCatchNumber(bioCatchNumber, claimedAmount) {
     return { valid: false, message: 'Timestamp outside ±12min window.' };
   }
 
-  // Expected sender IBAN is fixed from vault creation.
-  const expectedSenderIBAN = `BIO${vaultData.initialBioConstant + vaultData.joinTimestamp}`;
-  if (claimedSenderIBAN !== expectedSenderIBAN) {
-    return { valid: false, message: 'Mismatched Sender IBAN in BioCatch.' };
-  }
-  if (claimedSenderBalance < claimedAmount) {
-    return { valid: false, message: 'Sender’s claimed balance is less than transaction amount.' };
-  }
+  // NOTE: Removed the check using local vaultData.
+  // Instead, the sender snapshot (decoded below) will be validated.
 
   let senderVaultSnapshot;
   try {
@@ -728,7 +724,7 @@ async function handleSendTransaction() {
     vaultData.finalChainHash = await computeFullChainHash(vaultData.transactions);
 
     if (bonusGranted) {
-      // BONUS TRANSACTION: Set senderBioIBAN explicitly to bonusIBAN.
+      // For bonus transactions, explicitly set senderBioIBAN to the fixed vault owner IBAN.
       const bonusTx = {
         type: 'cashback',
         amount: PER_TX_BONUS,
@@ -737,7 +733,7 @@ async function handleSendTransaction() {
         bioConstantAtGeneration: vaultData.bioConstant,
         previousHash: vaultData.lastTransactionHash,
         txHash: '',
-        senderBioIBAN: vaultData.bonusIBAN  // <-- bonus IBAN is defined at vault creation.
+        senderBioIBAN: vaultData.bioIBAN
       };
       bonusTx.txHash = await computeTransactionHash(vaultData.lastTransactionHash, bonusTx);
       vaultData.transactions.push(bonusTx);
@@ -1106,10 +1102,8 @@ async function createNewVault(pinFromUser = null) {
   const nowSec = Math.floor(Date.now() / 1000);
   vaultData.joinTimestamp = nowSec;
   vaultData.lastUTCTimestamp = nowSec;
-  // Compute and fix the Bio‑IBAN once at vault creation.
+  // Compute and fix the Bio‑IBAN at creation time.
   vaultData.bioIBAN = `BIO${vaultData.initialBioConstant + nowSec}`;
-  // Also set bonusIBAN to the same fixed value.
-  vaultData.bonusIBAN = vaultData.bioIBAN;
   vaultData.initialBalanceTVM = INITIAL_BALANCE_TVM;
   vaultData.balanceTVM = INITIAL_BALANCE_TVM;
   vaultData.balanceUSD = parseFloat((INITIAL_BALANCE_TVM / EXCHANGE_RATE).toFixed(2));
