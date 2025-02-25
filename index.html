@@ -450,89 +450,6 @@
       background-color: #144180;
     }
 
-  /* Info Display Section */
-#infoSection {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border-radius: 10px;
-  padding: 20px;
-  max-width: 800px;
-  margin: 20px auto;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  text-align: left;
-}
-
-#infoSection h1 {
-  font-size: 1.8em;
-  margin-bottom: 10px;
-}
-
-#infoSection h3 {
-  margin-top: 20px;
-  font-size: 1.3em;
-}
-
-#infoSection ul {
-  list-style: none;
-  padding: 0;
-  margin-top: 10px;
-}
-
-#infoSection ul li {
-  font-size: 1.1em;
-  margin-bottom: 10px;
-}
-
-#backBtn {
-  background: #2258c4;
-  color: #fff;
-  padding: 10px 20px;
-  font-size: 16px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 0.3s ease;
-  display: inline-block;
-  margin-top: 20px;
-}
-
-#backBtn:hover {
-  background: #144180;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  #infoSection {
-    padding: 15px;
-  }
-
-  #infoSection h1 {
-    font-size: 1.5em;
-  }
-
-  #infoSection h3 {
-    font-size: 1.1em;
-  }
-
-  #infoSection ul li {
-    font-size: 1em;
-  }
-}
-
-@media (max-width: 480px) {
-  #backBtn {
-    padding: 8px 16px;
-    font-size: 14px;
-  }
-
-  #infoSection {
-    padding: 10px;
-  }
-
-  #infoSection h1 {
-    font-size: 1.2em;
-  }
-}
 
   </style>
 </head>
@@ -548,37 +465,6 @@
     <!-- Enter Vault button (which might not be functional in your env) -->
     <button id="enterVaultBtn" aria-label="Enter Vault">Enter Vault</button>
   </div>
-<!-- Info Display Section -->
-<div id="infoSection" class="container">
-  <h1>How TVM Works</h1>
-  <p>TVM eliminates inflation and financial manipulation by adapting dynamically to two key factors:</p>
-  <h3>Global Average Income (GAI):</h3>
-  <p>Ensures TVM’s purchasing power is always aligned with real wages.</p>
-  <h3>High-Impact (HI) Transaction Percentage:</h3>
-  <p>Rewards real economic activity, not hoarding.</p>
-  <p>The result? No inflation, no deflation—just pure economic equilibrium.</p>
-
-  <h1>Additional TVM Details</h1>
-  <p>TVM follows a transaction-based issuance model instead of mining or staking:</p>
-
-  <ul>
-    <li>Main Balance: 3,000 TVM</li>
-    <li>Exchange Rate: 1 USD = 12 TVM</li>
-    <li>Initial Cashback Allocation: 15,000 TVM</li>
-    <li>Cashback Policy: To encourage active transactions and a balanced economy, TVM offers a structured cashback system:</li>
-  </ul>
-
-  <p>Eligibility: Up to 3 transactions per day for 30 days.</p>
-  <ul>
-    <li>First 3 transactions daily: Earn 400 TVM per transaction.</li>
-    <li>Total potential cashback: 1,200 TVM per day.</li>
-    <li>Maximum Cashback Cap: 15,000 TVM per 3 months.</li>
-  </ul>
-  <p>The result? Encourages frequent transactions while maintaining system balance.</p>
-
-  <!-- 'Back' button to hide the info and show vault UI -->
-  <button id="backBtn" aria-label="Back" style="display: none;">Back</button>
-</div>
 
 
   <!-- 
