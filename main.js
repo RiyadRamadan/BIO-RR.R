@@ -178,7 +178,58 @@ async function loadVaultDataFromDB() {
     getReq.onerror = (err) => reject(err);
   });
 }
+/******************************
+ * WebAuthn / Biometric
+ ******************************/
+async function performBiometricAuthenticationForCreation() {
+  try {
+    const publicKey = {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: "Bio-Vault" },
+      user: {
+        id: crypto.getRandomValues(new Uint8Array(16)),
+        name: "bio-user",
+        displayName: "Bio User"
+      },
+      pubKeyCredParams: [
+        { type: "public-key", alg: -7 },
+        { type: "public-key", alg: -257 }
+      ],
+      authenticatorSelection: {
+        authenticatorAttachment: "platform",
+        userVerification: "required"
+      },
+      timeout: 60000,
+      attestation: "none"
+    };
+    const credential = await navigator.credentials.create({ publicKey });
+    if (!credential) {
+      console.error("❌ Biometric creation returned null.");
+      return null;
+    }
+    console.log("✅ Biometric Credential Created:", credential);
+    return credential;
+  } catch (err) {
+    console.error("❌ Biometric Credential Creation Error:", err);
+    return null;
+  }
+}
 
+async function performBiometricAssertion(credentialId) {
+  try {
+    const publicKey = {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ id: base64ToBuffer(credentialId), type: 'public-key' }],
+      userVerification: "required",
+      timeout: 60000
+    };
+    const assertion = await navigator.credentials.get({ publicKey });
+    return !!assertion;
+  } catch (err) {
+    console.error("❌ Biometric Assertion Error:", err);
+    return false;
+  }
+}
 /******************************
  * Encryption / Decryption
  ******************************/
