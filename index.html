@@ -257,7 +257,76 @@
       font-weight: bold;
     }
 
+    /* إضافات TVM Widget */
+    .tvm-container {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 20px;
+      overflow-y: auto;
+      z-index: 999;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
 
+    .tvm-widget {
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      max-width: 600px;
+      background: #222;
+      text-align: left;
+    }
+
+    .tvm-widget h2, .tvm-widget h3 {
+      text-align: center;
+      color: #fff;
+      margin-bottom: 15px;
+    }
+
+    .tvm-widget p, .tvm-widget li {
+      font-size: 16px;
+      line-height: 1.6;
+      color: #fff;
+    }
+
+    .tvm-widget ul {
+      list-style: disc;
+      padding-left: 20px;
+      margin-bottom: 15px;
+    }
+
+    #showTvmWidget {
+      background: #10b981;
+    }
+
+    #showTvmWidget:hover {
+      background: #059669;
+    }
+
+    /* زر الإغلاق */
+    #closeTvmWidget {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+      font-size: 30px;
+      background: none;
+      border: none;
+      color: white;
+      cursor: pointer;
+    }
+
+    #closeTvmWidget:hover {
+      color: red;
+    }
     /* Responsive */
     @media (max-width: 1024px) {
       #bioLineUTCContainer {
@@ -464,7 +533,42 @@
     <button id="enterVaultBtn" aria-label="Enter Vault">Enter Vault</button>
   </div>
 
+  <!-- زر لفتح TVM Widget -->
+  <button id="showTvmWidget">Show TVM Details</button>
 
+  <!-- TVM Widget (يظهر عند الضغط على الزر) -->
+  <div class="tvm-container" id="tvmContainer">
+    <button id="closeTvmWidget">&times;</button>
+    <div class="tvm-widget">
+      <h2>How TVM Works</h2>
+      <p>
+        TVM eliminates inflation and financial manipulation by adapting dynamically to two key factors:
+      </p>
+      <ul>
+        <li><strong>Global Average Income (GAI):</strong> Ensures TVM’s purchasing power is always aligned with real wages.</li>
+        <li><strong>High-Impact (HI) Transaction Percentage:</strong> Rewards real economic activity, not hoarding.</li>
+      </ul>
+      <p>The result? No inflation, no deflation—just pure economic equilibrium.</p>
+
+      <h3>Additional TVM Details</h3>
+      <p>
+        TVM follows a transaction-based issuance model instead of mining or staking:
+      </p>
+      <ul>
+        <li><strong>Main Balance:</strong> 3,000 TVM</li>
+        <li><strong>Exchange Rate:</strong> 1 USD = 12 TVM</li>
+        <li><strong>Initial Cashback Allocation:</strong> 15,000 TVM</li>
+      </ul>
+      <p><strong>Cashback Policy:</strong> To encourage active transactions and a balanced economy, TVM offers a structured cashback system:</p>
+      <ul>
+        <li>Eligibility: Up to 3 transactions per day for 30 days.</li>
+        <li>First 3 transactions daily: Earn 400 TVM per transaction.</li>
+        <li>Total potential cashback: 1,200 TVM per day.</li>
+        <li>Maximum Cashback Cap: 15,000 TVM per 3 months.</li>
+      </ul>
+      <p>The result? Encourages frequent transactions while maintaining system balance.</p>
+    </div>
+  </div>
   <!-- 
       PASS MODAL for passphrase input 
       (Used by main.js => getPassphraseFromModal())
@@ -574,6 +678,14 @@
         toggleLink.textContent = 'See more';
       }
     }
+        // إظهار وإخفاء TVM Widget
+    document.getElementById('showTvmWidget').addEventListener('click', function () {
+      document.getElementById('tvmContainer').style.display = 'flex';
+    });
+
+    document.getElementById('closeTvmWidget').addEventListener('click', function () {
+      document.getElementById('tvmContainer').style.display = 'none';
+    });
   </script>
 </body>
 </html>
