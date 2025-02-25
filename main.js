@@ -307,7 +307,90 @@ async function loadVaultDataFromDB() {
 async function applyPeriodicIncrements() {
   // Example: If you have periodic bonus increments based on UTC time, implement here.
 }
+/******************************
+ * Vault Creation / Unlock Helpers
+ ******************************/
+async function deriveKeyFromPIN(pin, salt) {
+  const encoder = new TextEncoder();
+  const pinBytes = encoder.encode(pin);
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    pinBytes,
+    { name: 'PBKDF2' },
+    false,
+    ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: salt,
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
 
+async function handleFailedAuthAttempt() {
+  vaultData.authAttempts = (vaultData.authAttempts || 0) + 1;
+  if (vaultData.authAttempts >= MAX_AUTH_ATTEMPTS) {
+    vaultData.lockoutTimestamp = Math.floor(Date.now() / 1000) + LOCKOUT_DURATION_SECONDS;
+    alert('❌ Max authentication attempts exceeded. Vault locked for 1 hour.');
+  } else {
+    alert(`❌ Auth failed. You have ${MAX_AUTH_ATTEMPTS - vaultData.authAttempts} tries left.`);
+  }
+  await promptAndSaveVault();
+}
+
+function lockVault() {
+  if (!vaultUnlocked) return;
+  vaultUnlocked = false;
+  document.getElementById('vaultUI')?.classList.add('hidden');
+  document.getElementById('lockVaultBtn')?.classList.add('hidden');
+  document.getElementById('lockedScreen')?.classList.remove('hidden');
+  localStorage.setItem('vaultUnlocked', 'false');
+  console.log('🔒 Vault locked.');
+}
+
+/******************************
+ * Persistence
+ ******************************/
+async function persistVaultData(salt = null) {
+  try {
+    if (!derivedKey) {
+      throw new Error('🔴 No encryption key');
+    }
+    const { iv, ciphertext } = await encryptData(derivedKey, vaultData);
+
+    let saltBase64;
+    if (salt) {
+      saltBase64 = bufferToBase64(salt);
+    } else {
+      const stored = await loadVaultDataFromDB();
+      if (stored && stored.salt) {
+        saltBase64 = bufferToBase64(stored.salt);
+      } else {
+        throw new Error('🔴 Salt not found. Cannot persist vault data.');
+      }
+    }
+    await saveVaultDataToDB(iv, ciphertext, saltBase64);
+    const backupPayload = {
+      iv: bufferToBase64(iv),
+      data: bufferToBase64(ciphertext),
+      salt: saltBase64,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(VAULT_BACKUP_KEY, JSON.stringify(backupPayload));
+    vaultSyncChannel.postMessage({ type: 'vaultUpdate', payload: backupPayload });
+    console.log('💾 Triply-redundant persistence complete');
+  } catch (err) {
+    console.error('💥 Persistence failed:', err);
+    alert('🚨 CRITICAL: VAULT BACKUP FAILED! EXPORT IMMEDIATELY!');
+  }
+}
 /******************************
  * Bonus Logic (Daily, Monthly, Annual)
  ******************************/
@@ -901,6 +984,7 @@ function lockVault() {
 /******************************
  * Passphrase Modal & Vault Creation / Unlock
  ******************************/
+// When creating a new vault, the modal requires confirmation.
 async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Enter Passphrase' }) {
   return new Promise((resolve) => {
     const passModal = document.getElementById('passModal');
@@ -910,20 +994,24 @@ async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Ent
     const passConfirmInput = document.getElementById('passModalConfirmInput');
     const passCancelBtn = document.getElementById('passModalCancelBtn');
     const passSaveBtn = document.getElementById('passModalSaveBtn');
+
     passTitle.textContent = modalTitle;
     passInput.value = '';
     passConfirmInput.value = '';
     passConfirmLabel.style.display = confirmNeeded ? 'block' : 'none';
     passConfirmInput.style.display = confirmNeeded ? 'block' : 'none';
+
     function cleanup() {
       passCancelBtn.removeEventListener('click', onCancel);
       passSaveBtn.removeEventListener('click', onSave);
       passModal.style.display = 'none';
     }
+
     function onCancel() {
       cleanup();
       resolve({ pin: null });
     }
+
     function onSave() {
       const pinVal = passInput.value.trim();
       if (!pinVal || pinVal.length < 8) {
@@ -940,21 +1028,29 @@ async function getPassphraseFromModal({ confirmNeeded = false, modalTitle = 'Ent
       cleanup();
       resolve({ pin: pinVal, confirmed: true });
     }
+
     passCancelBtn.addEventListener('click', onCancel);
     passSaveBtn.addEventListener('click', onSave);
     passModal.style.display = 'block';
   });
 }
 
-async function createNewVault(pinFromUser = null) {
+// Check for vault existence before prompting.
+async function checkAndUnlockVault() {
   const stored = await loadVaultDataFromDB();
-  if (stored) {
-    alert('❌ A vault already exists on this device. Please unlock it instead.');
-    return;
-  }
-  if (!pinFromUser) {
+  if (!stored) {
+    if (!confirm('⚠️ No vault found. Create a new vault?')) return;
     const { pin } = await getPassphraseFromModal({ confirmNeeded: true, modalTitle: 'Create New Vault (Set Passphrase)' });
-    pinFromUser = pin;
+    await createNewVault(pin);
+  } else {
+    await unlockVault();
+  }
+}
+
+async function createNewVault(pinFromUser = null) {
+  if (!pinFromUser) {
+    const result = await getPassphraseFromModal({ confirmNeeded: true, modalTitle: 'Create New Vault (Set Passphrase)' });
+    pinFromUser = result.pin;
   }
   if (!pinFromUser || pinFromUser.length < 8) {
     alert('⚠️ Passphrase must be >= 8 characters.');
@@ -962,10 +1058,11 @@ async function createNewVault(pinFromUser = null) {
   }
   console.log("No existing vault found. Proceeding with NEW vault creation...");
   localStorage.setItem('vaultLock', 'locked');
+
   const nowSec = Math.floor(Date.now() / 1000);
   vaultData.joinTimestamp = nowSec;
   vaultData.lastUTCTimestamp = nowSec;
-  // Compute vault owner's Bio‑IBAN: "BIO" + (initialBioConstant + joinTimestamp)
+  // Compute and fix the Bio‑IBAN at creation time.
   vaultData.bioIBAN = `BIO${vaultData.initialBioConstant + nowSec}`;
   vaultData.initialBalanceTVM = INITIAL_BALANCE_TVM;
   vaultData.balanceTVM = INITIAL_BALANCE_TVM;
@@ -973,19 +1070,22 @@ async function createNewVault(pinFromUser = null) {
   vaultData.transactions = [];
   vaultData.authAttempts = 0;
   vaultData.lockoutTimestamp = null;
-  vaultData.incrementsUsed = 0;
   vaultData.lastTransactionHash = '';
   vaultData.finalChainHash = '';
+
   const credential = await performBiometricAuthenticationForCreation();
   if (!credential || !credential.id) {
     alert('Biometric credential creation failed/cancelled. Vault cannot be created.');
     return;
   }
   vaultData.credentialId = bufferToBase64(credential.rawId);
+
   console.log('🆕 Creating new vault:', vaultData);
+
   const salt = generateSalt();
   derivedKey = await deriveKeyFromPIN(pinFromUser, salt);
   await persistVaultData(salt);
+
   vaultUnlocked = true;
   showVaultUI();
   initializeBioConstantAndUTCTime();
@@ -1005,6 +1105,7 @@ async function unlockVault() {
       await promptAndSaveVault();
     }
   }
+
   const { pin } = await getPassphraseFromModal({ confirmNeeded: false, modalTitle: 'Unlock Vault' });
   if (!pin) {
     alert('❌ Passphrase is required or user canceled the modal.');
@@ -1016,12 +1117,14 @@ async function unlockVault() {
     handleFailedAuthAttempt();
     return;
   }
+
   const stored = await loadVaultDataFromDB();
   if (!stored) {
     if (!confirm('⚠️ No vault found. Create a new vault?')) return;
     await createNewVault(pin);
     return;
   }
+
   try {
     if (!stored.salt) {
       throw new Error('🔴 Salt not found in stored data.');
@@ -1029,8 +1132,10 @@ async function unlockVault() {
     derivedKey = await deriveKeyFromPIN(pin, stored.salt);
     const decrypted = await decryptData(derivedKey, stored.iv, stored.ciphertext);
     vaultData = decrypted;
+
     vaultData.lockoutTimestamp = stored.lockoutTimestamp;
     vaultData.authAttempts = stored.authAttempts;
+
     if (vaultData.credentialId) {
       const ok = await performBiometricAssertion(vaultData.credentialId);
       if (!ok) {
@@ -1041,11 +1146,13 @@ async function unlockVault() {
     } else {
       console.log("🔶 No credentialId found, skipping WebAuthn check.");
     }
+
     vaultUnlocked = true;
     vaultData.authAttempts = 0;
     vaultData.lockoutTimestamp = null;
-    await applyPeriodicIncrements();
+
     await promptAndSaveVault();
+
     showVaultUI();
     initializeBioConstantAndUTCTime();
     localStorage.setItem('vaultUnlocked', 'true');
@@ -1057,7 +1164,7 @@ async function unlockVault() {
 }
 
 /******************************
- * Multi-Tab / Single Vault
+ * Multi‑Tab / Single Vault
  ******************************/
 function preventMultipleVaults() {
   window.addEventListener('storage', (evt) => {
@@ -1108,7 +1215,7 @@ async function enforceStoragePersistence() {
  * On DOM Load & UI Initialization
  ******************************/
 function loadVaultOnStartup() {
-  // Optional auto-unlock logic.
+  // Optional auto‑unlock logic can be placed here if desired.
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -1119,11 +1226,13 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener("beforeunload", () => {
     localStorage.setItem("last_session_url", window.location.href);
   });
+
   console.log("✅ Bio‑Vault: Initializing UI...");
   initializeUI();
   loadVaultOnStartup();
   preventMultipleVaults();
   enforceStoragePersistence();
+
   vaultSyncChannel.onmessage = async (e) => {
     if (e.data?.type === 'vaultUpdate') {
       try {
@@ -1147,24 +1256,31 @@ window.addEventListener('DOMContentLoaded', () => {
 function initializeUI() {
   const enterVaultBtn = document.getElementById('enterVaultBtn');
   if (enterVaultBtn) {
-    // You can use unlockVault() or a vault-check flow.
-    enterVaultBtn.addEventListener('click', unlockVault);
+    // Use checkAndUnlockVault which first checks for vault existence.
+    enterVaultBtn.addEventListener('click', checkAndUnlockVault);
     console.log("✅ Event listener attached to enterVaultBtn!");
   } else {
     console.error("❌ enterVaultBtn NOT FOUND in DOM!");
   }
+
   const lockVaultBtn = document.getElementById('lockVaultBtn');
   lockVaultBtn?.addEventListener('click', lockVault);
+
   const catchInBtn = document.getElementById('catchInBtn');
   catchInBtn?.addEventListener('click', handleReceiveTransaction);
+
   const catchOutBtn = document.getElementById('catchOutBtn');
   catchOutBtn?.addEventListener('click', handleSendTransaction);
+
   const copyBioIBANBtn = document.getElementById('copyBioIBANBtn');
   copyBioIBANBtn?.addEventListener('click', handleCopyBioIBAN);
+
   const exportBtn = document.getElementById('exportBtn');
   exportBtn?.addEventListener('click', exportTransactionTable);
+
   const exportBackupBtn = document.getElementById('exportBackupBtn');
   exportBackupBtn?.addEventListener('click', exportVaultBackup);
+
   const bioCatchPopup = document.getElementById('bioCatchPopup');
   if (bioCatchPopup) {
     const closeBioCatchPopupBtn = document.getElementById('closeBioCatchPopup');
@@ -1187,5 +1303,7 @@ function initializeUI() {
       }
     });
   }
+
   enforceSingleVault();
 }
+
