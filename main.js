@@ -1424,3 +1424,46 @@ function initializeUI() {
   enforceSingleVault();
 }
 
+// JavaScript to manage the display logic
+document.addEventListener("DOMContentLoaded", function() {
+  const infoSection = document.getElementById('infoSection');
+  const backBtn = document.getElementById('backBtn');
+  const enterVaultBtn = document.getElementById('enterVaultBtn');
+  const lockedScreen = document.getElementById('lockedScreen');
+  const vaultUI = document.getElementById('vaultUI');
+  const lockVaultBtn = document.getElementById('lockVaultBtn');
+
+  // Display the info section when the page loads
+  infoSection.style.display = 'block';
+  backBtn.style.display = 'none';
+
+  // Handle the back button to hide the info section and show the vault UI
+  backBtn.addEventListener('click', function() {
+    infoSection.style.display = 'none';
+    vaultUI.classList.remove('hidden');
+    lockVaultBtn.classList.remove('hidden');
+  });
+
+  // Handle the enter vault button to hide the info section and show vault UI
+  enterVaultBtn.addEventListener('click', function() {
+    infoSection.style.display = 'none';
+    vaultUI.classList.remove('hidden');
+    lockVaultBtn.classList.remove('hidden');
+  });
+
+  // Lock Vault Button to hide vault UI and show locked screen
+  lockVaultBtn.addEventListener('click', function() {
+    vaultUI.classList.add('hidden');
+    lockVaultBtn.classList.add('hidden');
+    lockedScreen.classList.remove('hidden');
+    infoSection.style.display = 'none'; // Ensure infoSection is hidden when vault is locked
+  });
+
+  // Make sure the info section appears only when not in vault UI
+  if (lockedScreen.classList.contains('hidden')) {
+    infoSection.style.display = 'block';
+    backBtn.style.display = 'inline-block';
+  } else {
+    infoSection.style.display = 'none';
+  }
+});
