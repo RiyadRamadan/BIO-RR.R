@@ -257,20 +257,19 @@
       font-weight: bold;
     }
 
-    /* إضافات TVM Widget */
+    /* ✅ تأكدنا أن الكونتينر مخفي عند فتح الصفحة */
     .tvm-container {
       display: none;
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
-      height: 100%;
+      height: 100vh; /* تغطية الشاشة بالكامل */
       background-color: rgba(0, 0, 0, 0.9);
       color: white;
       padding: 20px;
       overflow-y: auto;
       z-index: 999;
-      display: flex;
       justify-content: center;
       align-items: center;
       text-align: center;
@@ -284,6 +283,8 @@
       max-width: 600px;
       background: #222;
       text-align: left;
+      max-height: 90vh; /* ✅ تم ضبط الارتفاع حتى لا يتم قص المحتوى */
+      overflow-y: auto; /* ✅ إضافة التمرير عند الحاجة */
     }
 
     .tvm-widget h2, .tvm-widget h3 {
