@@ -678,13 +678,23 @@
         toggleLink.textContent = 'See more';
       }
     }
-        // إظهار وإخفاء TVM Widget
-    document.getElementById('showTvmWidget').addEventListener('click', function () {
-      document.getElementById('tvmContainer').style.display = 'flex';
-    });
+    document.addEventListener("DOMContentLoaded", function () {
+      var tvmContainer = document.getElementById('tvmContainer');
+      var showTvmWidget = document.getElementById('showTvmWidget');
+      var closeTvmWidget = document.getElementById('closeTvmWidget');
 
-    document.getElementById('closeTvmWidget').addEventListener('click', function () {
-      document.getElementById('tvmContainer').style.display = 'none';
+      // ✅ إخفاء الكونتينر عند تحميل الصفحة
+      tvmContainer.style.display = 'none';
+
+      // ✅ إظهار الكونتينر عند الضغط على الزر
+      showTvmWidget.addEventListener('click', function () {
+        tvmContainer.style.display = 'flex';
+      });
+
+      // ✅ إغلاق الكونتينر عند الضغط على "X"
+      closeTvmWidget.addEventListener('click', function () {
+        tvmContainer.style.display = 'none';
+      });
     });
   </script>
 </body>
