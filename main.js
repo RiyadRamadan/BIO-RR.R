@@ -1,5 +1,4 @@
-<!-- main.js -->
-<script>
+
 /***********************************************************************
  * main.js — Merged "Balance, Bonus & Validation" Code (Production Ready)
  * 
@@ -1363,4 +1362,4 @@ function initializeUI() {
 /******************************
  * End main.js
  ******************************/
-</script>
+
