@@ -336,49 +336,7 @@
       }
     }
 
-    /* TVM widget styles */
-    .tvm-widget {
-      border: 1px solid #e0e0e0;
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      max-width: 600px;
-      margin: 20px auto;
-      text-align: left;
-      color: #333;
-    }
-    .tvm-widget h2, .tvm-widget h3 {
-      text-align: center;
-      color: #fff;
-      margin-bottom: 15px;
-    }
-    .tvm-widget p, .tvm-widget li {
-      font-size: 16px;
-      line-height: 1.6;
-      color: #fff;
-    }
-    .tvm-widget ul {
-      list-style: disc;
-      padding-left: 20px;
-      margin-bottom: 15px;
-    }
-    .tvm-widget .see-more {
-      display: inline-block;
-      margin-top: 15px;
-      font-size: 16px;
-      font-weight: 600;
-      color: #007BFF;
-      cursor: pointer;
-      text-decoration: none;
-      border: 1px solid #007BFF;
-      padding: 8px 16px;
-      border-radius: 5px;
-      transition: background-color 0.3s ease, color 0.3s ease;
-    }
-    .tvm-widget .see-more:hover {
-      background-color: #007BFF;
-      color: #fff;
-    }
+
 
     /* 
      =================================================
@@ -449,23 +407,97 @@
     #passModalSaveBtn:hover {
       background-color: #144180;
     }
-/* New content */
-.new-content p {
-  font-size: 18px;
-  color: #fff;
-  margin: 20px 0;
+
+/* Main button */
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    margin: 20px;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
 }
 
-.back-button {
-  margin-top: 20px;
-  background: #f59e0b;
-  color: #fff;
+button:hover {
+    background-color: #0056b3;
 }
 
-.back-button:hover {
-  background: #d97706;
+/* Fullscreen container (hidden by default) */
+.container {
+    display: none; /* Hidden initially */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 20px;
+    overflow-y: auto;
+    z-index: 999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
 }
 
+/* Content Wrapper */
+.content-wrapper {
+    background-color: #222;
+    padding: 30px;
+    border-radius: 10px;
+    max-width: 800px;
+    width: 90%;
+    text-align: left;
+}
+
+/* Close button (X) */
+#closeButton {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 30px;
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+#closeButton:hover {
+    color: red;
+}
+
+/* Responsive Design */
+@media screen and (max-width: 1024px) {
+    /* Adjust the content wrapper for smaller screens */
+    .content-wrapper {
+        width: 80%;  /* Increase the width to fit more screen space */
+        padding: 15px;  /* Reduce the padding to fit better */
+        font-size: 14px;  /* Reduce font size for small screens */
+    }
+
+    /* Resize the close button */
+    #closeButton {
+        top: 5px;
+        right: 10px;
+        font-size: 25px;
+    }
+
+    /* Adjust the button size */
+    button {
+        padding: 8px 16px; /* Smaller button size for mobile */
+        font-size: 14px; /* Smaller text on button */
+        margin: 15px;
+    }
+
+    /* Style adjustments for smaller screens */
+    .container {
+        padding: 10px; /* Reduce the padding inside the container */
+        align-items: center; /* Align content to the start */
+    }
+}
 
   </style>
 </head>
@@ -488,34 +520,48 @@
     <button id="showNewContentBtn">How TVM Works</button>
   </div>
 
-  <!-- New Content -->
-  <div id="newContent" class="new-content">
-    <h1>How TVM Works</h1>
-    <p>TVM eliminates inflation and financial manipulation by adapting dynamically to two key factors:</p>
-    <ul>
-      <li><strong>Global Average Income (GAI):</strong> Ensures TVM’s purchasing power is always aligned with real wages.</li>
-      <li><strong>High-Impact (HI) Transaction Percentage:</strong> Rewards real economic activity, not hoarding.</li>
-    </ul>
-    <p>The result? No inflation, no deflation—just pure economic equilibrium.</p>
+    <!-- Button to open the container -->
+    <button id="toggleButton">Show Details</button>
 
-    <h2>Additional TVM Details</h2>
-    <p>TVM follows a transaction-based issuance model instead of mining or staking:</p>
-    <ul>
-      <li><strong>Main Balance:</strong> 3,000 TVM</li>
-      <li><strong>Exchange Rate:</strong> 1 USD = 12 TVM</li>
-      <li><strong>Initial Cashback Allocation:</strong> 15,000 TVM</li>
-    </ul>
-    <p><strong>Cashback Policy:</strong> To encourage active transactions and a balanced economy, TVM offers a structured cashback system:</p>
-    <ul>
-      <li>Eligibility: Up to 3 transactions per day for 30 days.</li>
-      <li>First 3 transactions daily: Earn 400 TVM per transaction.</li>
-      <li>Total potential cashback: 1,200 TVM per day.</li>
-      <li>Maximum Cashback Cap: 15,000 TVM per 3 months.</li>
-    </ul>
-    <p>The result? Encourages frequent transactions while maintaining system balance.</p>
-    <button id="backBtn" class="back-button">Back</button>
-  </div>
 
+   <div class="container" id="container">
+        
+        <!-- Close button -->
+        <button id="closeButton">&times;</button>
+
+        <div class="content-wrapper">
+            <!-- Full TVM Content -->
+            <h2>How TVM Works</h2>
+            <p>
+                TVM eliminates inflation and financial manipulation by adapting dynamically to two key factors:
+            </p>
+            <ul>
+                <li><strong>Global Average Income (GAI):</strong> Ensures TVM’s purchasing power is always aligned with real wages.</li>
+                <li><strong>High-Impact (HI) Transaction Percentage:</strong> Rewards real economic activity, not hoarding.</li>
+            </ul>
+            <p>The result? No inflation, no deflation—just pure economic equilibrium.</p>
+
+            <h3>Additional TVM Details</h3>
+            <p>
+                TVM follows a transaction-based issuance model instead of mining or staking:
+            </p>
+            <ul>
+                <li><strong>Main Balance:</strong> 3,000 TVM</li>
+                <li><strong>Exchange Rate:</strong> 1 USD = 12 TVM</li>
+                <li><strong>Initial Cashback Allocation:</strong> 15,000 TVM</li>
+            </ul>
+            <p><strong>Cashback Policy:</strong> To encourage active transactions and a balanced economy, TVM offers a structured cashback system:</p>
+            <ul>
+                <li>Eligibility: Up to 3 transactions per day for 30 days.</li>
+                <li>First 3 transactions daily: Earn 400 TVM per transaction.</li>
+                <li>Total potential cashback: 1,200 TVM per day.</li>
+                <li>Maximum Cashback Cap: 15,000 TVM per 3 months.</li>
+            </ul>
+            <p>The result? Encourages frequent transactions while maintaining system balance.</p>
+        </div>
+    </div>
+
+  
   <!-- 
       PASS MODAL for passphrase input 
       (Used by main.js => getPassphraseFromModal())
@@ -625,17 +671,26 @@
         toggleLink.textContent = 'See more';
       }
     }
-    // Show new content when the "How TVM Works" button is clicked
-    document.getElementById('showNewContentBtn').addEventListener('click', function () {
-      document.getElementById('originalContent').style.display = 'none';
-      document.getElementById('newContent').style.display = 'block';
+
+    document.addEventListener("DOMContentLoaded", function () {
+    var container = document.getElementById('container');
+    var toggleButton = document.getElementById('toggleButton');
+    var closeButton = document.getElementById('closeButton');
+
+    // Ensure the container is hidden on page load
+    container.style.display = 'none';
+
+    // Show the container when button is clicked
+    toggleButton.addEventListener('click', function () {
+        container.style.display = 'flex';
     });
 
-    // Go back to the main content when the "Back" button is clicked
-    document.getElementById('backBtn').addEventListener('click', function () {
-      document.getElementById('originalContent').style.display = 'block';
-      document.getElementById('newContent').style.display = 'none';
+    // Close the container when 'X' button is clicked
+    closeButton.addEventListener('click', function () {
+        container.style.display = 'none';
     });
+});
+
 
   </script>
 </body>
