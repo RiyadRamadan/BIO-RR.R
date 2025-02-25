@@ -449,6 +449,22 @@
     #passModalSaveBtn:hover {
       background-color: #144180;
     }
+/* New content */
+.new-content p {
+  font-size: 18px;
+  color: #fff;
+  margin: 20px 0;
+}
+
+.back-button {
+  margin-top: 20px;
+  background: #f59e0b;
+  color: #fff;
+}
+
+.back-button:hover {
+  background: #d97706;
+}
 
 
   </style>
@@ -465,6 +481,33 @@
     <!-- Enter Vault button (which might not be functional in your env) -->
     <button id="enterVaultBtn" aria-label="Enter Vault">Enter Vault</button>
   </div>
+<!-- New content to be displayed -->
+<div id="newContent" class="new-content">
+  <h1>How TVM Works</h1>
+  <p>TVM eliminates inflation and financial manipulation by adapting dynamically to two key factors:</p>
+  <ul>
+    <li><strong>Global Average Income (GAI):</strong> Ensures TVM’s purchasing power is always aligned with real wages.</li>
+    <li><strong>High-Impact (HI) Transaction Percentage:</strong> Rewards real economic activity, not hoarding.</li>
+  </ul>
+  <p>The result? No inflation, no deflation—just pure economic equilibrium.</p>
+
+  <h2>Additional TVM Details</h2>
+  <p>TVM follows a transaction-based issuance model instead of mining or staking:</p>
+  <ul>
+    <li><strong>Main Balance:</strong> 3,000 TVM</li>
+    <li><strong>Exchange Rate:</strong> 1 USD = 12 TVM</li>
+    <li><strong>Initial Cashback Allocation:</strong> 15,000 TVM</li>
+  </ul>
+  <p><strong>Cashback Policy:</strong> To encourage active transactions and a balanced economy, TVM offers a structured cashback system:</p>
+  <ul>
+    <li>Eligibility: Up to 3 transactions per day for 30 days.</li>
+    <li>First 3 transactions daily: Earn 400 TVM per transaction.</li>
+    <li>Total potential cashback: 1,200 TVM per day.</li>
+    <li>Maximum Cashback Cap: 15,000 TVM per 3 months.</li>
+  </ul>
+  <p>The result? Encourages frequent transactions while maintaining system balance.</p>
+  <button id="backBtn" class="back-button">Back</button>
+</div>
 
 
   <!-- 
@@ -576,6 +619,17 @@
         toggleLink.textContent = 'See more';
       }
     }
+// Show new content when the "How TVM Works" button is clicked
+document.getElementById('enterVaultBtn').addEventListener('click', function () {
+  document.getElementById('lockedScreen').classList.add('hidden');
+  document.getElementById('newContent').classList.remove('hidden');
+});
+
+// Go back to the main content when the "Back" button is clicked
+document.getElementById('backBtn').addEventListener('click', function () {
+  document.getElementById('lockedScreen').classList.remove('hidden');
+  document.getElementById('newContent').classList.add('hidden');
+});
 
   </script>
 </body>
