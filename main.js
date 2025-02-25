@@ -1380,7 +1380,6 @@ function initializeUI() {
   } else {
     console.error("❌ enterVaultBtn NOT FOUND in DOM!");
   }
-  toggleButton.style.display = 'none';
   const lockVaultBtn = document.getElementById('lockVaultBtn');
   lockVaultBtn?.addEventListener('click', lockVault);
 
