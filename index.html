@@ -256,6 +256,80 @@
       display: inline-block;
       font-weight: bold;
     }
+      /* Main button */
+      button {
+          padding: 10px 20px;
+          font-size: 16px;
+          margin: 20px;
+          cursor: pointer;
+          background-color: #007bff;
+          color: white;
+          border: none;
+          border-radius: 5px;
+      }
+      
+      button:hover {
+          background-color: #0056b3;
+      }
+      
+      /* Fullscreen container (hidden by default) */
+      .container {
+          display: none; /* Hidden initially */
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.9);
+          color: white;
+          padding: 20px;
+          overflow-y: auto;
+          z-index: 999;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          text-align: center;
+      }
+      
+      /* Content Wrapper */
+      .content-wrapper {
+          background-color: #222;
+          padding: 30px;
+          border-radius: 10px;
+          max-width: 800px;
+          width: 90%;
+          text-align: left;
+      }
+      
+      /* Close button (X) */
+      #closeButton {
+          position: absolute;
+          top: 15px;
+          right: 20px;
+          font-size: 30px;
+          background: none;
+          border: none;
+          color: white;
+          cursor: pointer;
+      }
+      
+      #closeButton:hover {
+          color: red;
+      }
+      
+      /* Responsive Design */
+      @media screen and (max-width: 600px) {
+          .content-wrapper {
+              width: 95%;
+              padding: 20px;
+          }
+      
+          #closeButton {
+              top: 10px;
+              right: 15px;
+              font-size: 25px;
+          }
+      }
 
     /* Responsive */
     @media (max-width: 1024px) {
@@ -463,6 +537,46 @@
     <button id="enterVaultBtn" aria-label="Enter Vault">Enter Vault</button>
   </div>
 
+    <!-- Button to open the container -->
+    <button id="toggleButton">Show Details</button>
+
+    <!-- Full-screen container (Hidden by default) -->
+    <div class="container" id="container">
+        
+        <!-- Close button -->
+        <button id="closeButton">&times;</button>
+
+        <div class="content-wrapper">
+            <!-- Full TVM Content -->
+            <h2>How TVM Works</h2>
+            <p>
+                TVM eliminates inflation and financial manipulation by adapting dynamically to two key factors:
+            </p>
+            <ul>
+                <li><strong>Global Average Income (GAI):</strong> Ensures TVM’s purchasing power is always aligned with real wages.</li>
+                <li><strong>High-Impact (HI) Transaction Percentage:</strong> Rewards real economic activity, not hoarding.</li>
+            </ul>
+            <p>The result? No inflation, no deflation—just pure economic equilibrium.</p>
+
+            <h3>Additional TVM Details</h3>
+            <p>
+                TVM follows a transaction-based issuance model instead of mining or staking:
+            </p>
+            <ul>
+                <li><strong>Main Balance:</strong> 3,000 TVM</li>
+                <li><strong>Exchange Rate:</strong> 1 USD = 12 TVM</li>
+                <li><strong>Initial Cashback Allocation:</strong> 15,000 TVM</li>
+            </ul>
+            <p><strong>Cashback Policy:</strong> To encourage active transactions and a balanced economy, TVM offers a structured cashback system:</p>
+            <ul>
+                <li>Eligibility: Up to 3 transactions per day for 30 days.</li>
+                <li>First 3 transactions daily: Earn 400 TVM per transaction.</li>
+                <li>Total potential cashback: 1,200 TVM per day.</li>
+                <li>Maximum Cashback Cap: 15,000 TVM per 3 months.</li>
+            </ul>
+            <p>The result? Encourages frequent transactions while maintaining system balance.</p>
+        </div>
+    </div>
   <!-- 
       PASS MODAL for passphrase input 
       (Used by main.js => getPassphraseFromModal())
