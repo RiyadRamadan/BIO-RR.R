@@ -425,7 +425,7 @@ button:hover {
 }
 
 /* Fullscreen container (hidden by default) */
-.container {
+.container-content-wrapper {
     display: none; /* Hidden initially */
     position: fixed;
     top: 0;
@@ -451,6 +451,11 @@ button:hover {
     max-width: 800px;
     width: 90%;
     text-align: left;
+    color: white;
+    box-sizing: border-box; /* Ensure padding doesn't affect width */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 /* Close button (X) */
@@ -493,7 +498,7 @@ button:hover {
     }
 
     /* Style adjustments for smaller screens */
-    .container {
+    .container-content-wrapper {
         padding: 10px; /* Reduce the padding inside the container */
         align-items: center; /* Align content to the start */
     }
@@ -514,17 +519,13 @@ button:hover {
     <button id="enterVaultBtn" aria-label="Enter Vault">Enter Vault</button>
   </div>
   <!-- Original Content -->
-  <div id="originalContent">
-    <h1>Welcome to Bio‑Vault</h1>
-    <p>Your vault is where the true value of money is stored securely.</p>
-    <button id="showNewContentBtn">How TVM Works</button>
-  </div>
+ 
 
     <!-- Button to open the container -->
-    <button id="toggleButton">Show Details</button>
+  /*  <button id="toggleButton">Show Details</button>*/
 
 
-   <div class="container" id="container">
+   <div class="container-content-wrapper" id="container-content-wrapper">
         
         <!-- Close button -->
         <button id="closeButton">&times;</button>
@@ -660,20 +661,10 @@ button:hover {
 
   <!-- "See more" function for the TVM widget -->
   <script>
-    function toggleText() {
-      const secondPart = document.getElementById('secondPart');
-      const toggleLink = document.getElementById('toggleLink');
-      if (secondPart.style.display === 'none' || secondPart.style.display === '') {
-        secondPart.style.display = 'block';
-        toggleLink.textContent = 'See less';
-      } else {
-        secondPart.style.display = 'none';
-        toggleLink.textContent = 'See more';
-      }
-    }
+   
 
     document.addEventListener("DOMContentLoaded", function () {
-    var container = document.getElementById('container');
+    var container = document.getElementById('container-content-wrapper');
     var toggleButton = document.getElementById('toggleButton');
     var closeButton = document.getElementById('closeButton');
 
