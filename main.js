@@ -391,6 +391,9 @@ async function persistVaultData(salt = null) {
     alert('🚨 CRITICAL: VAULT BACKUP FAILED! EXPORT IMMEDIATELY!');
   }
 }
+async function promptAndSaveVault() {
+  await persistVaultData();
+}
 /******************************
  * Bonus Logic (Daily, Monthly, Annual)
  ******************************/
