@@ -1424,21 +1424,3 @@ function initializeUI() {
   enforceSingleVault();
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-    var container = document.getElementById('container');
-    var toggleButton = document.getElementById('toggleButton');
-    var closeButton = document.getElementById('closeButton');
-
-    // Ensure the container is hidden on page load
-    container.style.display = 'none';
-
-    // Show the container when button is clicked
-    toggleButton.addEventListener('click', function () {
-        container.style.display = 'flex';
-    });
-
-    // Close the container when 'X' button is clicked
-    closeButton.addEventListener('click', function () {
-        container.style.display = 'none';
-    });
-});
